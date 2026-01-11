@@ -84,6 +84,12 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return jsonResponse(logs);
     }
 
+    // 接続中のSocket.IOクライアント一覧
+    if (path === '/api/clients' && request.method === 'GET') {
+      const clients = await grpcClient.getClients();
+      return jsonResponse({ clients, total: clients.length });
+    }
+
     return new Response('Not found', { status: 404 });
   } catch (error) {
     console.error('API error:', error);

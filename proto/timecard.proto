@@ -47,6 +47,9 @@ service ICLogService {
   // ICログ + ドライバー名で取得
   rpc GetWithDriver(TimeRangeRequest) returns (ICLogWithDriverList);
 
+  // 最新N件のICログ + ドライバー名を取得
+  rpc GetLatestWithDriver(PaginationRequest) returns (ICLogWithDriverList);
+
   // 一時データなしのICログ取得
   rpc GetWithoutTmp(PaginationRequest) returns (ICLogList);
 }
@@ -192,6 +195,9 @@ service ICNonRegService {
 
   // 未登録ICカードを更新 (ドライバー割り当て)
   rpc Update(UpdateICNonRegRequest) returns (google.protobuf.Empty);
+
+  // 予約をキャンセル (registered_idをNULLに戻す)
+  rpc CancelReservation(CancelICNonRegRequest) returns (google.protobuf.Empty);
 }
 
 message ICNonReg {
@@ -208,6 +214,10 @@ message ICNonRegList {
 message UpdateICNonRegRequest {
   string ic_id = 1;
   int32 driver_id = 2;
+}
+
+message CancelICNonRegRequest {
+  string ic_id = 1;
 }
 
 // =============================================================================
@@ -282,4 +292,25 @@ message TestData {
 
 message TestDataList {
   repeated TestData data = 1;
+}
+
+// =============================================================================
+// Client Service - 接続クライアント管理
+// =============================================================================
+
+service ClientService {
+  // 接続中のクライアント一覧取得
+  rpc GetAll(google.protobuf.Empty) returns (ClientList);
+}
+
+message ConnectedClient {
+  string socket_id = 1;
+  string ip_address = 2;
+  string connected_at = 3;   // ISO 8601 形式
+  string last_activity = 4;  // ISO 8601 形式
+}
+
+message ClientList {
+  repeated ConnectedClient clients = 1;
+  int32 total = 2;
 }

@@ -77,6 +77,8 @@ async function serveStaticContent(request: Request, env: Env, path: string): Pro
     filePath = '/delete-ic.html';
   } else if (path === '/ic_log_list' || path === '/ic-log-list.html') {
     filePath = '/ic-log-list.html';
+  } else if (path === '/clients' || path === '/clients.html') {
+    filePath = '/clients.html';
   }
 
   // For development, return inline HTML
@@ -134,6 +136,7 @@ function getPageContent(path: string): string | null {
     '/ic-non-reg.html': getIcNonRegPage(),
     '/delete-ic.html': getDeleteIcPage(),
     '/ic-log-list.html': getIcLogListPage(),
+    '/clients.html': getClientsPage(),
   };
   return pages[path] || null;
 }
@@ -183,6 +186,7 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
       <a href="/drivers" class="btn btn-outline-primary">ドライバー</a>
       <a href="/ic_non_reg" class="btn btn-outline-primary">未登録IC</a>
       <a href="/delete_ic" class="btn btn-outline-primary">IC削除</a>
+      <a href="/clients" class="btn btn-outline-info">接続端末</a>
     </nav>
     <div id="ws-status" class="ws-status ws-disconnected">切断中</div>
     ${content}
@@ -932,6 +936,138 @@ function getIcLogListPage(): string {
   `;
 
   return getBaseTemplate('打刻一覧', content, scripts);
+}
+
+function getClientsPage(): string {
+  const content = `
+    <h1>接続端末一覧</h1>
+    <div class="mb-3">
+      <span class="badge bg-primary" id="clientCount">0 台接続中</span>
+      <button id="refreshBtn" class="btn btn-sm btn-outline-secondary ms-2">更新</button>
+    </div>
+    <table id="clientsTable" class="table table-bordered table-striped">
+      <thead class="table-dark">
+        <tr>
+          <th class="text-center">IPアドレス</th>
+          <th class="text-center">接続時刻</th>
+          <th class="text-center">最終通信</th>
+          <th class="text-center">状態</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+    </div>
+    <div id="noClients" class="text-muted text-center py-4" style="display: none;">
+      接続中の端末はありません
+    </div>
+  `;
+
+  const scripts = `
+    <script>
+      const tableBody = document.querySelector('#clientsTable tbody');
+      const clientCount = document.getElementById('clientCount');
+      const loadingElem = document.getElementById('loading');
+      const noClientsElem = document.getElementById('noClients');
+      const clientsTable = document.getElementById('clientsTable');
+
+      async function loadClients() {
+        loadingElem.classList.add('show');
+        tableBody.innerHTML = '';
+        try {
+          const response = await fetch('/api/clients');
+          const data = await response.json();
+          renderClients(data.clients);
+          updateCount(data.total);
+        } catch (e) {
+          console.error('Failed to load clients:', e);
+          tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">データの取得に失敗しました</td></tr>';
+        } finally {
+          loadingElem.classList.remove('show');
+        }
+      }
+
+      function renderClients(clients) {
+        tableBody.innerHTML = '';
+
+        if (clients.length === 0) {
+          clientsTable.style.display = 'none';
+          noClientsElem.style.display = 'block';
+          return;
+        }
+
+        clientsTable.style.display = 'table';
+        noClientsElem.style.display = 'none';
+
+        clients.forEach((client) => {
+          const tr = document.createElement('tr');
+          tr.id = 'client-' + client.socket_id;
+
+          // IP Address
+          const ipCell = tr.insertCell();
+          ipCell.textContent = client.ip_address || 'unknown';
+          ipCell.className = 'text-center';
+
+          // Connected time
+          const connectedCell = tr.insertCell();
+          const connectedDate = new Date(client.connected_at);
+          connectedCell.textContent = formatDateTime(connectedDate);
+          connectedCell.className = 'text-center';
+
+          // Last activity
+          const activityCell = tr.insertCell();
+          const activityDate = new Date(client.last_activity);
+          activityCell.textContent = formatDateTime(activityDate);
+          activityCell.className = 'text-center';
+          activityCell.id = 'activity-' + client.socket_id;
+
+          // Status
+          const statusCell = tr.insertCell();
+          const timeDiff = Date.now() - activityDate.getTime();
+          if (timeDiff < 60000) {
+            statusCell.innerHTML = '<span class="badge bg-success">アクティブ</span>';
+          } else if (timeDiff < 300000) {
+            statusCell.innerHTML = '<span class="badge bg-warning text-dark">待機中</span>';
+          } else {
+            statusCell.innerHTML = '<span class="badge bg-secondary">非アクティブ</span>';
+          }
+          statusCell.className = 'text-center';
+
+          tableBody.appendChild(tr);
+        });
+      }
+
+      function updateCount(count) {
+        clientCount.textContent = count + ' 台接続中';
+        if (count > 0) {
+          clientCount.className = 'badge bg-success';
+        } else {
+          clientCount.className = 'badge bg-secondary';
+        }
+      }
+
+      function formatDateTime(date) {
+        return date.getFullYear() + '/' +
+          String(date.getMonth() + 1).padStart(2, '0') + '/' +
+          String(date.getDate()).padStart(2, '0') + ' ' +
+          String(date.getHours()).padStart(2, '0') + ':' +
+          String(date.getMinutes()).padStart(2, '0') + ':' +
+          String(date.getSeconds()).padStart(2, '0');
+      }
+
+      // Refresh button
+      document.getElementById('refreshBtn').addEventListener('click', loadClients);
+
+      // Auto-refresh every 30 seconds
+      setInterval(loadClients, 30000);
+
+      // Initial load
+      loadClients();
+    </script>
+  `;
+
+  return getBaseTemplate('接続端末', content, scripts);
 }
 
 function getStyles(): string {

@@ -14,6 +14,7 @@ import {
   CancelICNonRegRequestSchema,
   ICLogListSchema,
   ICLogWithDriverListSchema,
+  ClientListSchema,
 } from './gen/timecard_pb';
 import { EmptySchema } from '@bufbuild/protobuf/wkt';
 
@@ -328,6 +329,33 @@ export class GrpcWebClient {
       date: log.date,
       driver_name: log.driverName,
       machine_ip: log.machineIp,
+    }));
+  }
+
+  // Client Service - 接続中のSocket.IOクライアント一覧
+  async getClients(): Promise<Array<{
+    socket_id: string;
+    ip_address: string;
+    connected_at: string;
+    last_activity: string;
+  }>> {
+    const response = await this.callGrpcWeb(
+      'timecard.ClientService',
+      'GetAll',
+      EmptySchema,
+      ClientListSchema,
+      {}
+    );
+    return response.clients.map((client: {
+      socketId: string;
+      ipAddress: string;
+      connectedAt: string;
+      lastActivity: string;
+    }) => ({
+      socket_id: client.socketId,
+      ip_address: client.ipAddress,
+      connected_at: client.connectedAt,
+      last_activity: client.lastActivity,
     }));
   }
 }
