@@ -12,6 +12,8 @@ import {
   TimeRangeRequestSchema,
   UpdateICNonRegRequestSchema,
   CancelICNonRegRequestSchema,
+  RegisterDirectRequestSchema,
+  RegisterDirectResponseSchema,
   ICLogListSchema,
   ICLogWithDriverListSchema,
   ClientListSchema,
@@ -278,6 +280,29 @@ export class GrpcWebClient {
       { icId }
     );
     return { success: true, ic_id: icId };
+  }
+
+  async registerDirectIc(icId: string, driverId: number): Promise<{
+    success: boolean;
+    message: string;
+    ic_id: string | undefined;
+    driver_id: number | undefined;
+    driver_name: string | undefined;
+  }> {
+    const response = await this.callGrpcWeb(
+      'timecard.ICNonRegService',
+      'RegisterDirect',
+      RegisterDirectRequestSchema,
+      RegisterDirectResponseSchema,
+      { icId, driverId }
+    );
+    return {
+      success: response.success,
+      message: response.message,
+      ic_id: response.icId,
+      driver_id: response.driverId,
+      driver_name: response.driverName,
+    };
   }
 
   // IC Log Service

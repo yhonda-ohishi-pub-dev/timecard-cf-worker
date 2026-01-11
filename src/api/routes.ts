@@ -62,19 +62,11 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return jsonResponse(logs);
     }
 
-    // Direct IC registration via Web NFC
+    // Direct IC registration via Web NFC (gRPC)
     if (path === '/api/ic/register_direct' && request.method === 'POST') {
       const body = await request.json() as { ic_id: string; driver_id: number };
-      // Forward to Rust HTTP API (port 8080)
-      const backendUrl = env.GRPC_API_URL.replace(/:\d+$/, '').replace(/\/$/, '');
-      const httpApiUrl = `${backendUrl}:8080/api/ic/register_direct`;
-      const response = await fetch(httpApiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const result = await response.json();
-      return jsonResponse(result, response.status);
+      const result = await grpcClient.registerDirectIc(body.ic_id, body.driver_id);
+      return jsonResponse(result);
     }
 
     // 最新のタイムカード記録（ドライバー名付き）

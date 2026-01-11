@@ -198,6 +198,9 @@ service ICNonRegService {
 
   // 予約をキャンセル (registered_idをNULLに戻す)
   rpc CancelReservation(CancelICNonRegRequest) returns (google.protobuf.Empty);
+
+  // Web NFCから直接IC登録 (ic_non_regedにregistered_idを設定)
+  rpc RegisterDirect(RegisterDirectRequest) returns (RegisterDirectResponse);
 }
 
 message ICNonReg {
@@ -218,6 +221,19 @@ message UpdateICNonRegRequest {
 
 message CancelICNonRegRequest {
   string ic_id = 1;
+}
+
+message RegisterDirectRequest {
+  string ic_id = 1;
+  int32 driver_id = 2;
+}
+
+message RegisterDirectResponse {
+  bool success = 1;
+  string message = 2;
+  optional string ic_id = 3;
+  optional int32 driver_id = 4;
+  optional string driver_name = 5;
 }
 
 // =============================================================================
