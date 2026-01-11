@@ -307,8 +307,8 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
           const version = await response.json();
           const versionElem = document.getElementById('api-version');
           if (versionElem && version.git_commit) {
-            const buildDate = version.build_date ? new Date(version.build_date).toLocaleDateString('ja-JP') : '';
-            versionElem.textContent = 'API: ' + version.git_commit + (buildDate ? ' (' + buildDate + ')' : '');
+            const buildDateTime = version.build_date ? new Date(version.build_date).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+            versionElem.textContent = 'API: ' + version.git_commit.substring(0, 7) + (buildDateTime ? ' (' + buildDateTime + ')' : '');
             versionElem.title = 'Build: ' + version.build_date + '\\nRust: ' + version.rust_version + '\\nCommit: ' + version.git_commit_full;
           }
         }
