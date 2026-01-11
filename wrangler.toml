@@ -1,0 +1,17 @@
+name = "timecard-cf-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[durable_objects]
+bindings = [
+  { name = "WEBSOCKET_HIBERNATION", class_name = "WebSocketHibernationDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["WebSocketHibernationDO"]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"

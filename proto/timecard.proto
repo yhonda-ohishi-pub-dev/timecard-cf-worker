@@ -1,0 +1,285 @@
+syntax = "proto3";
+
+package timecard;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Driver Service - ドライバー/従業員管理
+// =============================================================================
+
+service DriverService {
+  // 全ドライバー取得
+  rpc GetAll(google.protobuf.Empty) returns (DriverList);
+
+  // IDでドライバー取得
+  rpc GetById(DriverIdRequest) returns (Driver);
+
+  // 外部APIからドライバーデータを再読み込み
+  rpc Reload(google.protobuf.Empty) returns (DriverList);
+}
+
+message Driver {
+  int32 id = 1;
+  string name = 2;
+}
+
+message DriverList {
+  repeated Driver drivers = 1;
+}
+
+message DriverIdRequest {
+  int32 driver_id = 1;
+}
+
+// =============================================================================
+// IC Log Service - ICカードログ管理
+// =============================================================================
+
+service ICLogService {
+  // 直近のICログ取得 (デフォルト2日間)
+  rpc GetRecent(TimeRangeRequest) returns (ICLogList);
+
+  // ICログ降順で取得
+  rpc GetRecentDesc(TimeRangeRequest) returns (ICLogList);
+
+  // ICログ + ドライバー名で取得
+  rpc GetWithDriver(TimeRangeRequest) returns (ICLogWithDriverList);
+
+  // 一時データなしのICログ取得
+  rpc GetWithoutTmp(PaginationRequest) returns (ICLogList);
+}
+
+message ICLog {
+  string id = 1;
+  string type = 2;
+  optional string detail = 3;
+  string date = 4;  // ISO 8601 形式
+  optional string iid = 5;
+  string machine_ip = 6;
+}
+
+message ICLogWithDriver {
+  string id = 1;
+  string type = 2;
+  optional string detail = 3;
+  string date = 4;
+  optional string iid = 5;
+  string machine_ip = 6;
+  optional string driver_name = 7;
+}
+
+message ICLogList {
+  repeated ICLog logs = 1;
+}
+
+message ICLogWithDriverList {
+  repeated ICLogWithDriver logs = 1;
+}
+
+// =============================================================================
+// Pic Data Service - 画像データ管理
+// =============================================================================
+
+service PicDataService {
+  // 全画像取得 (base64エンコード)
+  rpc GetAll(google.protobuf.Empty) returns (PicDataList);
+
+  // 一時データと画像を結合して取得
+  rpc GetTmp(PaginationRequest) returns (PicTmpList);
+
+  // ICログと画像を結合して取得
+  rpc GetIC(PaginationRequest) returns (PicICList);
+}
+
+message PicData {
+  string date = 1;
+  int32 cam = 2;
+  string pic_base64 = 3;  // base64エンコード済み
+  string detail = 4;
+  string machine_ip = 5;
+}
+
+message PicDataList {
+  repeated PicData pics = 1;
+}
+
+// 一時データ + 画像の結合結果
+message PicTmpData {
+  string machine_ip = 1;
+  string tmp = 2;       // 温度データ (カンマ区切り)
+  string amb = 3;       // 環境データ (カンマ区切り)
+  string dist = 4;      // 距離データ (カンマ区切り)
+  string date = 5;
+  optional int32 driver_id = 6;
+  optional string driver_name = 7;
+  optional string pic_data_1 = 8;  // base64
+  optional string pic_data_2 = 9;  // base64
+}
+
+message PicTmpList {
+  repeated PicTmpData data = 1;
+}
+
+// ICログ + 画像の結合結果
+message PicICData {
+  string id = 1;
+  string type = 2;
+  optional string detail = 3;
+  string date = 4;
+  optional string iid = 5;
+  string machine_ip = 6;
+  optional string pic_base64 = 7;
+}
+
+message PicICList {
+  repeated PicICData data = 1;
+}
+
+// =============================================================================
+// Tmp Data Service - 一時データ管理
+// =============================================================================
+
+service TmpDataService {
+  // 一時データ取得 (id=0)
+  rpc GetAll(PaginationRequest) returns (TmpDataList);
+
+  // 画像なしの一時データ取得
+  rpc GetWithoutPic(PaginationRequest) returns (TmpDataList);
+}
+
+message TmpData {
+  string machine_ip = 1;
+  string tmp = 2;
+  string amb = 3;
+  string dist = 4;
+  string date = 5;
+  int32 id = 6;
+}
+
+message TmpDataList {
+  repeated TmpData data = 1;
+}
+
+// =============================================================================
+// Finger Log Service - 指紋ログ管理
+// =============================================================================
+
+service FingerLogService {
+  // 直近の指紋ログ取得 (デフォルト2日間)
+  rpc GetRecent(TimeRangeRequest) returns (FingerLogList);
+}
+
+message FingerLog {
+  string date = 1;
+  string machine_ip = 2;
+  int32 id = 3;
+  string message = 4;
+}
+
+message FingerLogList {
+  repeated FingerLog logs = 1;
+}
+
+// =============================================================================
+// IC Non Reg Service - 未登録ICカード管理
+// =============================================================================
+
+service ICNonRegService {
+  // 未登録ICカード取得
+  rpc GetAll(TimeRangeRequest) returns (ICNonRegList);
+
+  // 未登録ICカードを更新 (ドライバー割り当て)
+  rpc Update(UpdateICNonRegRequest) returns (google.protobuf.Empty);
+}
+
+message ICNonReg {
+  string id = 1;
+  string datetime = 2;
+  optional bool deleted = 3;
+  optional int32 registered_id = 4;
+}
+
+message ICNonRegList {
+  repeated ICNonReg items = 1;
+}
+
+message UpdateICNonRegRequest {
+  string ic_id = 1;
+  int32 driver_id = 2;
+}
+
+// =============================================================================
+// VAPID Key Service - Web Push通知キー管理
+// =============================================================================
+
+service VapidKeyService {
+  // VAPIDキー生成
+  rpc Generate(google.protobuf.Empty) returns (VapidKey);
+}
+
+message VapidKey {
+  string public_key = 1;
+  string private_key = 2;
+  string uuid = 3;
+}
+
+// =============================================================================
+// Notification Service - リアルタイム通知 (Cloudflare DOから呼び出し)
+// =============================================================================
+
+service NotificationService {
+  // タイムカードイベントをブロードキャスト
+  rpc BroadcastEvent(TimeCardEvent) returns (google.protobuf.Empty);
+
+  // ドライバー名を解決してイベントを返す
+  rpc ResolveAndBroadcast(TimeCardEvent) returns (TimeCardEvent);
+}
+
+message TimeCardEvent {
+  string status = 1;    // "tmp inserted", "tmp inserted by ic", etc.
+  string message = 2;
+  EventData data = 3;
+  string ip = 4;
+}
+
+message EventData {
+  string time = 1;
+  optional bytes pic_data = 2;
+  optional string pic_data_base64 = 3;
+  string name = 4;
+  int32 id = 5;
+}
+
+// =============================================================================
+// 共通メッセージ
+// =============================================================================
+
+message TimeRangeRequest {
+  optional string start_date = 1;  // ISO 8601 形式 (デフォルト: 2日前)
+  optional string end_date = 2;    // ISO 8601 形式 (デフォルト: 現在)
+}
+
+message PaginationRequest {
+  optional int32 limit = 1;         // 取得件数
+  optional string start_date = 2;   // 開始日時
+  optional int32 offset = 3;        // オフセット
+}
+
+// =============================================================================
+// Test Service - テスト用
+// =============================================================================
+
+service TestService {
+  rpc GetTestData(google.protobuf.Empty) returns (TestDataList);
+}
+
+message TestData {
+  int32 id = 1;
+  int32 datetime = 2;
+}
+
+message TestDataList {
+  repeated TestData data = 1;
+}
