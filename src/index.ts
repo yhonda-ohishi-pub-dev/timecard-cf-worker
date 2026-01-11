@@ -18,6 +18,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Log client IP for access tracking
+    const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const userAgent = request.headers.get('User-Agent') || '';
+    console.log(`[ACCESS] ${new Date().toISOString()} | IP: ${clientIP} | Path: ${path} | UA: ${userAgent.substring(0, 100)}`);
+
     // CORS headers for API requests
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
@@ -848,10 +853,10 @@ function getDeleteIcPage(): string {
       const scanButton = document.getElementById('scanButton');
       const resultDiv = document.getElementById('result');
 
-      // Real-time updates
+      // Real-time updates - 削除完了通知を受信
       window.tcWs.on('hello', (data) => {
         if (data.status === 'delete_ic') {
-          resultDiv.innerHTML = '<div class="alert alert-success">IC ' + (data.ic || '') + ' を削除しました</div>';
+          resultDiv.innerHTML = '<div class="alert alert-success">IC ' + (data.ic || '') + ' の削除リクエストを送信しました</div>';
         }
       });
 
@@ -870,13 +875,25 @@ function getDeleteIcPage(): string {
             alert('NFCタグを読み取れませんでした。別のタグをお試しください。');
           });
 
-          ndef.addEventListener('reading', ({ serialNumber }) => {
+          ndef.addEventListener('reading', async ({ serialNumber }) => {
             const serial = serialNumber.replace(/:/g, '');
-            window.tcWs.send({
-              type: 'message',
-              data: { status: 'delete_ic', ic: serial }
-            });
             resultDiv.innerHTML = '<div class="alert alert-warning">IC ' + serial + ' を削除中...</div>';
+
+            try {
+              const response = await fetch('/api/ic/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ic_id: serial })
+              });
+              const result = await response.json();
+              if (result.success) {
+                resultDiv.innerHTML = '<div class="alert alert-success">' + result.message + '</div>';
+              } else {
+                resultDiv.innerHTML = '<div class="alert alert-danger">エラー: ' + result.message + '</div>';
+              }
+            } catch (error) {
+              resultDiv.innerHTML = '<div class="alert alert-danger">APIエラー: ' + error + '</div>';
+            }
           });
         } catch (error) {
           alert('エラー: ' + error);

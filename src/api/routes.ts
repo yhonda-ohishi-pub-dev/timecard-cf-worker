@@ -69,6 +69,13 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return jsonResponse(result);
     }
 
+    // IC削除（Socket.IO経由でPythonクライアントに通知）
+    if (path === '/api/ic/delete' && request.method === 'POST') {
+      const body = await request.json() as { ic_id: string };
+      const result = await grpcClient.deleteIc(body.ic_id);
+      return jsonResponse(result);
+    }
+
     // 最新のタイムカード記録（ドライバー名付き）
     if (path === '/api/ic_log_list' && request.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '100');

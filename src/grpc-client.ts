@@ -14,6 +14,8 @@ import {
   CancelICNonRegRequestSchema,
   RegisterDirectRequestSchema,
   RegisterDirectResponseSchema,
+  DeleteIcRequestSchema,
+  DeleteIcResponseSchema,
   ICLogListSchema,
   ICLogWithDriverListSchema,
   ClientListSchema,
@@ -303,6 +305,21 @@ export class GrpcWebClient {
       ic_id: response.icId,
       driver_id: response.driverId,
       driver_name: response.driverName,
+    };
+  }
+
+  // IC削除（Socket.IO経由でPythonクライアントに通知）
+  async deleteIc(icId: string): Promise<{ success: boolean; message: string }> {
+    const response = await this.callGrpcWeb(
+      'timecard.ICNonRegService',
+      'DeleteIc',
+      DeleteIcRequestSchema,
+      DeleteIcResponseSchema,
+      { icId }
+    );
+    return {
+      success: response.success,
+      message: response.message,
     };
   }
 
