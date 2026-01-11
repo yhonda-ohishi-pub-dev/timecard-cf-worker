@@ -11,6 +11,7 @@ import {
   ICNonRegListSchema,
   TimeRangeRequestSchema,
   UpdateICNonRegRequestSchema,
+  CancelICNonRegRequestSchema,
   ICLogListSchema,
   ICLogWithDriverListSchema,
 } from './gen/timecard_pb';
@@ -265,6 +266,17 @@ export class GrpcWebClient {
       { icId, driverId }
     );
     return { success: true, ic_id: icId, driver_id: driverId };
+  }
+
+  async cancelIcReservation(icId: string): Promise<{ success: boolean; ic_id: string }> {
+    await this.callGrpcWeb(
+      'timecard.ICNonRegService',
+      'CancelReservation',
+      CancelICNonRegRequestSchema,
+      EmptySchema,
+      { icId }
+    );
+    return { success: true, ic_id: icId };
   }
 
   // IC Log Service

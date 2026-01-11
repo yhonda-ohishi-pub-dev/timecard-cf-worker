@@ -51,6 +51,12 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return jsonResponse(result);
     }
 
+    if (path === '/api/ic_non_reg/cancel' && request.method === 'POST') {
+      const body = await request.json() as { ic_id: string };
+      const result = await grpcClient.cancelIcReservation(body.ic_id);
+      return jsonResponse(result);
+    }
+
     if (path === '/api/ic_log' && request.method === 'GET') {
       const logs = await grpcClient.getIcLog();
       return jsonResponse(logs);

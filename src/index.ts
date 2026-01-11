@@ -652,7 +652,8 @@ function getIcNonRegPage(): string {
             // Driver registration cell
             const regCell = tr.insertCell();
             if (item.registered_id) {
-              regCell.innerHTML = '<span class="badge bg-success">予約済: ID ' + item.registered_id + '</span>';
+              regCell.innerHTML = '<span class="badge bg-success">予約済: ID ' + item.registered_id + '</span>' +
+                '<button class="btn btn-sm btn-outline-danger ms-2" onclick="cancelReservation(\\''+item.id+'\\')">取消</button>';
             } else {
               const form = document.createElement('form');
               form.className = 'd-flex';
@@ -699,6 +700,26 @@ function getIcNonRegPage(): string {
           }
         } catch (e) {
           console.error('Failed to register IC:', e);
+          alert('エラーが発生しました');
+        }
+      }
+
+      async function cancelReservation(icId) {
+        if (!confirm('予約を取消しますか？')) return;
+        try {
+          const response = await fetch('/api/ic_non_reg/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ic_id: icId })
+          });
+          if (response.ok) {
+            alert('取消しました');
+            location.reload();
+          } else {
+            alert('取消に失敗しました');
+          }
+        } catch (e) {
+          console.error('Failed to cancel reservation:', e);
           alert('エラーが発生しました');
         }
       }
