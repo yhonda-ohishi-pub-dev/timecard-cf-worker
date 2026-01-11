@@ -107,6 +107,24 @@ async function serveStaticContent(request: Request, env: Env, path: string): Pro
     }
   }
 
+  if (filePath.endsWith('.webmanifest')) {
+    const manifest = getStaticAsset(filePath);
+    if (manifest) {
+      return new Response(manifest, {
+        headers: { 'Content-Type': 'application/manifest+json' },
+      });
+    }
+  }
+
+  // PWA icons (SVG served as PNG for compatibility)
+  if (filePath === '/icon-192.png' || filePath === '/icon-512.png') {
+    const size = filePath.includes('192') ? 192 : 512;
+    const svg = generateIconSvg(size);
+    return new Response(svg, {
+      headers: { 'Content-Type': 'image/svg+xml' },
+    });
+  }
+
   return new Response('Not Found', { status: 404 });
 }
 
@@ -123,6 +141,8 @@ function getPageContent(path: string): string | null {
 function getStaticAsset(path: string): string | null {
   const assets: Record<string, string> = {
     '/styles.css': getStyles(),
+    '/manifest.webmanifest': getManifest(),
+    '/sw.js': getServiceWorker(),
   };
   return assets[path] || null;
 }
@@ -134,7 +154,13 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d6efd">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="タイムカード">
   <title>${title} - 大石社タイムカード</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
   <style>
     body { padding: 20px; }
@@ -252,6 +278,19 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
     }
 
     window.tcWs = new TimecardWebSocket();
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('Service Worker registered:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
   </script>
   ${scripts}
 </body>
@@ -909,4 +948,149 @@ function getStyles(): string {
     .ws-disconnected { background: #dc3545; color: white; }
     img.thumbnail { max-width: 200px; max-height: 150px; }
   `;
+}
+
+// PWA Manifest
+function getManifest(): string {
+  return JSON.stringify({
+    name: '大石社タイムカード',
+    short_name: 'タイムカード',
+    description: 'ICカード打刻確認システム',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#ffffff',
+    theme_color: '#0d6efd',
+    icons: [
+      {
+        src: '/icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+      {
+        src: '/icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+    ],
+  }, null, 2);
+}
+
+// Service Worker
+function getServiceWorker(): string {
+  return `// Service Worker for 大石社タイムカード PWA
+const CACHE_NAME = 'timecard-v1';
+const STATIC_ASSETS = [
+  '/',
+  '/drivers',
+  '/ic_non_reg',
+  '/delete_ic',
+  '/styles.css',
+  '/manifest.webmanifest',
+  'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
+];
+
+// Install event - cache static assets
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('Service Worker: Caching static assets');
+      return cache.addAll(STATIC_ASSETS);
+    })
+  );
+  self.skipWaiting();
+});
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+// Fetch event - network first, fallback to cache
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip WebSocket requests
+  if (url.pathname === '/ws') {
+    return;
+  }
+
+  // Skip API requests - always fetch from network
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // For navigation requests (HTML pages), use network first
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Clone and cache successful responses
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Fallback to cache on network failure
+          return caches.match(request).then((cachedResponse) => {
+            return cachedResponse || caches.match('/');
+          });
+        })
+    );
+    return;
+  }
+
+  // For static assets, use cache first
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        // Return cached version and update cache in background
+        fetch(request).then((response) => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, response);
+            });
+          }
+        }).catch(() => {});
+        return cachedResponse;
+      }
+
+      // Not in cache, fetch from network
+      return fetch(request).then((response) => {
+        if (response.ok) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone);
+          });
+        }
+        return response;
+      });
+    })
+  );
+});
+`;
+}
+
+// PWA Icon SVG generator
+function generateIconSvg(size: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+  <rect width="${size}" height="${size}" fill="#0d6efd" rx="${size * 0.1}"/>
+  <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle"
+        font-family="sans-serif" font-size="${size * 0.4}" font-weight="bold" fill="white">TC</text>
+</svg>`;
 }
