@@ -703,7 +703,7 @@ function getIcNonRegPage(): string {
         try {
           const response = await fetch('/api/ic_non_reg');
           const items = await response.json();
-          items.forEach((item) => {
+          items.filter(item => item.id && item.id.trim() !== '').forEach((item) => {
             const tr = tableElem.tBodies[0].insertRow(-1);
 
             // Date cell
@@ -792,6 +792,8 @@ function getIcNonRegPage(): string {
       // Real-time updates
       window.tcWs.on('hello', (data) => {
         if (data.status === 'insert ic_log' && !data.data.iid) {
+          // ICが空の場合は非表示
+          if (!data.data.ic || data.data.ic.trim() === '') return;
           const tr = tableElem.tBodies[0].insertRow(0);
           const date = new Date(data.data.date);
           date.setHours(date.getHours() + 9);
