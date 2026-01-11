@@ -722,8 +722,14 @@ function getIcNonRegPage(): string {
 
             // Date cell
             const dateCell = tr.insertCell(0);
-            const dateStr = new Date(item.datetime).toISOString().replace(/-/g, '/').replace(/T/g, ' ').slice(2, -5);
-            dateCell.textContent = dateStr;
+            const date = new Date(item.datetime);
+            const dateStr = date.getFullYear() + '/' +
+              String(date.getMonth() + 1).padStart(2, '0') + '/' +
+              String(date.getDate()).padStart(2, '0') + ' ' +
+              String(date.getHours()).padStart(2, '0') + ':' +
+              String(date.getMinutes()).padStart(2, '0') + ':' +
+              String(date.getSeconds()).padStart(2, '0');
+            dateCell.textContent = dateStr.slice(2);
 
             // IC cell
             tr.insertCell().textContent = item.id;
@@ -810,8 +816,13 @@ function getIcNonRegPage(): string {
           if (!data.data.ic || data.data.ic.trim() === '') return;
           const tr = tableElem.tBodies[0].insertRow(0);
           const date = new Date(data.data.date);
-          date.setHours(date.getHours() + 9);
-          tr.insertCell(0).textContent = date.toISOString().replace(/-/g, '/').replace(/T/g, ' ').slice(2, -5);
+          const dateStr = date.getFullYear() + '/' +
+            String(date.getMonth() + 1).padStart(2, '0') + '/' +
+            String(date.getDate()).padStart(2, '0') + ' ' +
+            String(date.getHours()).padStart(2, '0') + ':' +
+            String(date.getMinutes()).padStart(2, '0') + ':' +
+            String(date.getSeconds()).padStart(2, '0');
+          tr.insertCell(0).textContent = dateStr.slice(2);
           tr.insertCell().textContent = data.data.ic || '';
           tr.insertCell().textContent = '';
         }
