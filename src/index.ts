@@ -3,6 +3,7 @@
 
 import { WebSocketHibernationDO } from './durable-objects/websocket-hibernation';
 import { handleApiRequest } from './api/routes';
+import { ICON_192_BASE64, ICON_512_BASE64 } from './icons';
 
 export { WebSocketHibernationDO };
 
@@ -118,12 +119,25 @@ async function serveStaticContent(request: Request, env: Env, path: string): Pro
     }
   }
 
-  // PWA icons (SVG served as PNG for compatibility)
-  if (filePath === '/icon-192.png' || filePath === '/icon-512.png') {
-    const size = filePath.includes('192') ? 192 : 512;
-    const svg = generateIconSvg(size);
-    return new Response(svg, {
-      headers: { 'Content-Type': 'image/svg+xml' },
+  // PWA icons (PNG from base64)
+  if (filePath === '/icon-192.png') {
+    const binaryString = atob(ICON_192_BASE64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new Response(bytes, {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000' },
+    });
+  }
+  if (filePath === '/icon-512.png') {
+    const binaryString = atob(ICON_512_BASE64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new Response(bytes, {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000' },
     });
   }
 
@@ -1253,13 +1267,4 @@ self.addEventListener('fetch', (event) => {
   );
 });
 `;
-}
-
-// PWA Icon SVG generator
-function generateIconSvg(size: number): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
-  <rect width="${size}" height="${size}" fill="#0d6efd" rx="${size * 0.1}"/>
-  <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle"
-        font-family="sans-serif" font-size="${size * 0.4}" font-weight="bold" fill="white">TC</text>
-</svg>`;
 }
