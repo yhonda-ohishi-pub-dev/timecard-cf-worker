@@ -17,6 +17,7 @@ import {
   ICLogListSchema,
   ICLogWithDriverListSchema,
   ClientListSchema,
+  VersionInfoSchema,
 } from './gen/timecard_pb';
 import { EmptySchema } from '@bufbuild/protobuf/wkt';
 
@@ -382,5 +383,27 @@ export class GrpcWebClient {
       connected_at: client.connectedAt,
       last_activity: client.lastActivity,
     }));
+  }
+
+  // Version Service - APIバージョン情報取得
+  async getVersion(): Promise<{
+    git_commit: string;
+    git_commit_full: string;
+    build_date: string;
+    rust_version: string;
+  }> {
+    const response = await this.callGrpcWeb(
+      'timecard.VersionService',
+      'GetVersion',
+      EmptySchema,
+      VersionInfoSchema,
+      {}
+    );
+    return {
+      git_commit: response.gitCommit,
+      git_commit_full: response.gitCommitFull,
+      build_date: response.buildDate,
+      rust_version: response.rustVersion,
+    };
   }
 }

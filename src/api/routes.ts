@@ -82,6 +82,12 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return jsonResponse({ clients, total: clients.length });
     }
 
+    // APIバージョン情報
+    if (path === '/api/version' && request.method === 'GET') {
+      const version = await grpcClient.getVersion();
+      return jsonResponse(version);
+    }
+
     return new Response('Not found', { status: 404 });
   } catch (error) {
     console.error('API error:', error);

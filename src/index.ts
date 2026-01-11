@@ -181,12 +181,15 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
 </head>
 <body>
   <div class="container">
-    <nav class="nav-links">
-      <a href="/" class="btn btn-outline-primary">打刻一覧</a>
-      <a href="/drivers" class="btn btn-outline-primary">ドライバー</a>
-      <a href="/ic_non_reg" class="btn btn-outline-primary">未登録IC</a>
-      <a href="/delete_ic" class="btn btn-outline-primary">IC削除</a>
-      <a href="/clients" class="btn btn-outline-info">接続端末</a>
+    <nav class="nav-links d-flex justify-content-between align-items-center">
+      <div>
+        <a href="/" class="btn btn-outline-primary">打刻一覧</a>
+        <a href="/drivers" class="btn btn-outline-primary">ドライバー</a>
+        <a href="/ic_non_reg" class="btn btn-outline-primary">未登録IC</a>
+        <a href="/delete_ic" class="btn btn-outline-primary">IC削除</a>
+        <a href="/clients" class="btn btn-outline-info">接続端末</a>
+      </div>
+      <div id="api-version" class="text-muted small" style="font-size: 0.75em;"></div>
     </nav>
     <div id="ws-status" class="ws-status ws-disconnected">切断中</div>
     ${content}
@@ -295,6 +298,25 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
           });
       });
     }
+
+    // Load API version info
+    async function loadApiVersion() {
+      try {
+        const response = await fetch('/api/version');
+        if (response.ok) {
+          const version = await response.json();
+          const versionElem = document.getElementById('api-version');
+          if (versionElem && version.git_commit) {
+            const buildDate = version.build_date ? new Date(version.build_date).toLocaleDateString('ja-JP') : '';
+            versionElem.textContent = 'API: ' + version.git_commit + (buildDate ? ' (' + buildDate + ')' : '');
+            versionElem.title = 'Build: ' + version.build_date + '\\nRust: ' + version.rust_version + '\\nCommit: ' + version.git_commit_full;
+          }
+        }
+      } catch (e) {
+        console.log('Failed to load API version:', e);
+      }
+    }
+    loadApiVersion();
   </script>
   ${scripts}
 </body>
