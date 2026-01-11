@@ -333,6 +333,7 @@ export class GrpcWebClient {
     card_id: string;
     type: string;
     date: string;
+    driver_id: number | undefined;
     driver_name: string | undefined;
     machine_ip: string;
   }>> {
@@ -347,12 +348,14 @@ export class GrpcWebClient {
       id: string;
       type: string;
       date: string;
+      iid?: string;
       driverName?: string;
       machineIp: string;
     }) => ({
       card_id: log.id,
       type: log.type,
       date: log.date,
+      driver_id: log.iid ? parseInt(log.iid) : undefined,
       driver_name: log.driverName,
       machine_ip: log.machineIp,
     }));

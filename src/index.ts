@@ -877,6 +877,7 @@ function getIcLogListPage(): string {
       <thead class="table-dark">
         <tr>
           <th class="text-center">日時</th>
+          <th class="text-center">ID</th>
           <th class="text-center">氏名</th>
           <th class="text-center">カードID</th>
         </tr>
@@ -918,6 +919,14 @@ function getIcLogListPage(): string {
                           String(date.getSeconds()).padStart(2, '0');
             dateCell.textContent = dateStr;
             dateCell.className = 'text-center';
+
+            // Driver ID cell
+            const idCell = tr.insertCell();
+            idCell.textContent = log.driver_id != null ? String(log.driver_id) : '';
+            idCell.className = 'text-center';
+            if (log.driver_id == null) {
+              idCell.style.color = '#999';
+            }
 
             // Name cell
             const nameCell = tr.insertCell();
