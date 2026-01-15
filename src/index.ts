@@ -4,12 +4,21 @@
 import { WebSocketHibernationDO } from './durable-objects/websocket-hibernation';
 import { handleApiRequest } from './api/routes';
 import { ICON_192_BASE64, ICON_512_BASE64 } from './icons';
+import {
+  authMiddleware,
+  isPublicPath,
+  createLoginRedirect,
+  handleGoogleLogin,
+  handleGoogleCallback,
+  handleLineworksLogin,
+  handleLineworksCallback,
+  clearSessionCookie,
+  type Env as AuthEnv,
+} from './auth';
 
 export { WebSocketHibernationDO };
 
-export interface Env {
-  WEBSOCKET_HIBERNATION: DurableObjectNamespace;
-  GRPC_API_URL: string;
+export interface Env extends AuthEnv {
   __STATIC_CONTENT: KVNamespace;
 }
 
@@ -33,6 +42,53 @@ export default {
     // Handle preflight requests
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
+    }
+
+    // === 認証関連ルート ===
+    // ログインページ
+    if (path === '/login') {
+      return new Response(getLoginPage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    // Google OAuth開始
+    if (path === '/login/google') {
+      return handleGoogleLogin(request, env);
+    }
+
+    // Google OAuthコールバック
+    if (path === '/auth/google/callback') {
+      return handleGoogleCallback(request, env);
+    }
+
+    // LINE WORKS OAuth開始
+    if (path === '/login/lineworks') {
+      return handleLineworksLogin(request, env);
+    }
+
+    // LINE WORKS OAuthコールバック
+    if (path === '/auth/lineworks/callback') {
+      return handleLineworksCallback(request, env);
+    }
+
+    // ログアウト
+    if (path === '/logout') {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/login',
+          'Set-Cookie': clearSessionCookie(),
+        },
+      });
+    }
+
+    // === 認証チェック（公開パス以外） ===
+    if (!isPublicPath(path)) {
+      const auth = await authMiddleware(request, env);
+      if (!auth.authenticated) {
+        return createLoginRedirect(request);
+      }
     }
 
     // WebSocket upgrade for /ws endpoint
@@ -208,7 +264,10 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
         <a href="/delete_ic" class="btn btn-outline-primary">IC削除</a>
         <a href="/clients" class="btn btn-outline-info">接続端末</a>
       </div>
-      <div id="api-version" class="text-muted small" style="font-size: 0.75em;"></div>
+      <div class="d-flex align-items-center gap-2">
+        <div id="api-version" class="text-muted small" style="font-size: 0.75em;"></div>
+        <a href="/logout" class="btn btn-outline-secondary btn-sm">ログアウト</a>
+      </div>
     </nav>
     <div id="ws-status" class="ws-status ws-disconnected">切断中</div>
     ${content}
@@ -1295,4 +1354,128 @@ self.addEventListener('fetch', (event) => {
   );
 });
 `;
+}
+
+// ログインページ
+function getLoginPage(): string {
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d6efd">
+  <title>ログイン - 大石社タイムカード</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 400px;
+      width: 90%;
+    }
+    .login-title {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .login-title h1 {
+      font-size: 1.5rem;
+      color: #333;
+      margin-bottom: 5px;
+    }
+    .login-title p {
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .btn-login {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .btn-google {
+      background: #fff;
+      border: 1px solid #ddd;
+      color: #333;
+    }
+    .btn-google:hover {
+      background: #f8f9fa;
+      border-color: #ccc;
+    }
+    .btn-lineworks {
+      background: #00C73C;
+      border: none;
+      color: white;
+    }
+    .btn-lineworks:hover {
+      background: #00B036;
+    }
+    .divider {
+      text-align: center;
+      color: #999;
+      margin: 20px 0;
+      position: relative;
+    }
+    .divider::before,
+    .divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: #ddd;
+    }
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+    .icon-google {
+      width: 20px;
+      height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-title">
+      <h1>大石社タイムカード</h1>
+      <p>ログインしてください</p>
+    </div>
+
+    <a href="/login/google" class="btn btn-login btn-google">
+      <svg class="icon-google" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Googleでログイン
+    </a>
+
+    <a href="/login/lineworks" class="btn btn-login btn-lineworks">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+      </svg>
+      LINE WORKSでログイン
+    </a>
+
+    <div class="divider">または</div>
+
+    <p class="text-center text-muted small">
+      Cloudflare Access経由でアクセスすると自動ログインされます
+    </p>
+  </div>
+</body>
+</html>`;
 }

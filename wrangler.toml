@@ -11,6 +11,16 @@ bindings = [
 tag = "v1"
 new_classes = ["WebSocketHibernationDO"]
 
+# Environment variables (non-secret)
+[vars]
+CF_ACCESS_TEAM_NAME = "mtamaramu"
+
+# Secrets (set via: wrangler secret put <NAME>)
+# JWT_SECRET - セッションCookie署名用
+# GOOGLE_OAUTH_CONFIG - JSON配列形式 [{"client_id":"...","client_secret":"..."}]
+# LINEWORKS_CONFIG - JSON形式 {"client_id":"...","client_secret":"...","service_account":"...","private_key":"..."}
+# CF_ACCESS_AUD - Cloudflare Access Application Audience Tag
+
 # Development settings
 [dev]
 port = 8787
