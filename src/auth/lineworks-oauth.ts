@@ -16,7 +16,15 @@ function getRedirectUri(request: Request): string {
   return `${url.origin}/auth/lineworks/callback`;
 }
 
-export function handleLineworksLogin(request: Request, env: Env): Response {
+export interface LineworksLoginOptions {
+  preferApp?: boolean;
+}
+
+export function handleLineworksLogin(
+  request: Request,
+  env: Env,
+  options: LineworksLoginOptions = {}
+): Response {
   const url = new URL(request.url);
   const redirect = url.searchParams.get('redirect') || '/';
   const config = getConfig(env);
@@ -33,6 +41,22 @@ export function handleLineworksLogin(request: Request, env: Env): Response {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', 'user.read');
   authUrl.searchParams.set('state', stateStr);
+
+  // アプリ優先モード: Android Intent URLでLINE WORKSアプリを開く
+  if (options.preferApp) {
+    // Intent URL形式に変換
+    // intent://host/path#Intent;scheme=https;package=com.worksmobile.android;S.browser_fallback_url=<fallback>;end
+    const fallbackUrl = encodeURIComponent(authUrl.toString());
+    const intentUrl = `intent://${authUrl.host}${authUrl.pathname}${authUrl.search}#Intent;scheme=https;package=com.worksmobile.android;S.browser_fallback_url=${fallbackUrl};end`;
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: intentUrl,
+        'Set-Cookie': createStateCookie(stateStr),
+      },
+    });
+  }
 
   return new Response(null, {
     status: 302,

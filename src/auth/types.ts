@@ -9,6 +9,7 @@ export interface Env {
   CF_ACCESS_TEAM_NAME: string;
   CF_ACCESS_AUD?: string;
   ALLOWED_EMAILS?: string; // カンマ区切りの許可メールリスト
+  WOFF_ID?: string; // WOFF SDK用のID
 }
 
 export interface GoogleOAuthConfig {

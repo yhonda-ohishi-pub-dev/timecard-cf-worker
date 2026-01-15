@@ -14,6 +14,7 @@ new_classes = ["WebSocketHibernationDO"]
 # Environment variables (non-secret)
 [vars]
 CF_ACCESS_TEAM_NAME = "mtamaramu"
+WOFF_ID = "bY8PaaudJVkZqS9zhXzHtQ"
 
 # Secrets (set via: wrangler secret put <NAME>)
 # JWT_SECRET - セッションCookie署名用

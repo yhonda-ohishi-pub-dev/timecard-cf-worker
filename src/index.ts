@@ -72,6 +72,16 @@ export default {
       return handleLineworksCallback(request, env);
     }
 
+    // WOFF SDKログインページ（外部ブラウザ用）
+    if (path === '/login/woff') {
+      return getWoffLoginPage(request, env);
+    }
+
+    // WOFFコールバック（WOFFトークン検証）
+    if (path === '/auth/woff/callback') {
+      return handleWoffCallback(request, env);
+    }
+
     // ログアウト
     if (path === '/logout') {
       return new Response(null, {
@@ -1356,6 +1366,103 @@ self.addEventListener('fetch', (event) => {
 `;
 }
 
+// LINE WORKSアプリ認証ページ（AndroidでIntent URLを使用）
+function getLineworksAppLoginPage(request: Request, env: Env): Response {
+  const url = new URL(request.url);
+  const redirect = url.searchParams.get('redirect') || '/';
+  const config = JSON.parse(env.LINEWORKS_CONFIG) as { client_id: string; client_secret: string };
+
+  const state = {
+    redirect,
+    nonce: crypto.randomUUID(),
+  };
+  const stateStr = btoa(JSON.stringify(state));
+
+  const authUrl = new URL('https://auth.worksmobile.com/oauth2/v2.0/authorize');
+  authUrl.searchParams.set('client_id', config.client_id);
+  authUrl.searchParams.set('redirect_uri', `${url.origin}/auth/lineworks/callback`);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', 'user.read');
+  authUrl.searchParams.set('state', stateStr);
+
+  // LINE WORKSアプリがインストールされていれば、App Linksで自動的にアプリ内ブラウザが開く
+  // 通常のhttps URLでリダイレクトする
+  const oauthUrl = authUrl.toString();
+
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINE WORKS認証中...</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #00C73C 0%, #00A032 100%);
+      color: white;
+    }
+    .container { text-align: center; padding: 20px; }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .fallback { margin-top: 30px; }
+    .fallback a {
+      color: white;
+      background: rgba(0,0,0,0.2);
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .fallback a:hover { background: rgba(0,0,0,0.3); }
+    .debug { margin-top: 20px; font-size: 12px; opacity: 0.7; word-break: break-all; max-width: 90%; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>LINE WORKS認証へリダイレクト中...</h2>
+    <div class="spinner"></div>
+    <p id="status">LINE WORKSアプリがインストールされていれば自動でアプリが開きます</p>
+    <div class="fallback">
+      <a href="${oauthUrl}" id="fallbackLink">手動で認証画面を開く</a>
+    </div>
+    <div class="debug" id="debug"></div>
+  </div>
+  <script>
+    const oauthUrl = "${oauthUrl.replace(/"/g, '\\"')}";
+    const debug = document.getElementById('debug');
+
+    debug.textContent = 'URL: ' + oauthUrl.substring(0, 100) + '...';
+
+    // 少し待ってからリダイレクト（ページ表示のため）
+    setTimeout(function() {
+      window.location.href = oauthUrl;
+    }, 500);
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Set-Cookie': `oauth_state=${stateStr}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+    },
+  });
+}
+
 // ログインページ
 function getLoginPage(): string {
   return `<!DOCTYPE html>
@@ -1423,6 +1530,15 @@ function getLoginPage(): string {
     .btn-lineworks:hover {
       background: #00B036;
     }
+    .btn-lineworks-app {
+      background: #00A032;
+      border: 2px solid #008028;
+      color: white;
+    }
+    .btn-lineworks-app:hover {
+      background: #008028;
+      color: white;
+    }
     .divider {
       text-align: center;
       color: #999;
@@ -1463,11 +1579,18 @@ function getLoginPage(): string {
       Googleでログイン
     </a>
 
-    <a href="/login/lineworks" class="btn btn-login btn-lineworks">
+    <a href="/login/lineworks" class="btn btn-login btn-lineworks" id="lineworksBtn">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
       </svg>
       LINE WORKSでログイン
+    </a>
+
+    <a href="https://woff.worksmobile.com/woff/bY8PaaudJVkZqS9zhXzHtQ" class="btn btn-login btn-lineworks-app" id="woffBtn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+      </svg>
+      WOFFでログイン
     </a>
 
     <div class="divider">または</div>
@@ -1478,4 +1601,455 @@ function getLoginPage(): string {
   </div>
 </body>
 </html>`;
+}
+
+// WOFF SDKログインページ
+function getWoffLoginPage(request: Request, env: Env): Response {
+  const url = new URL(request.url);
+  const redirect = url.searchParams.get('redirect') || '/';
+  const woffId = (env as { WOFF_ID?: string }).WOFF_ID || '';
+
+  if (!woffId) {
+    return new Response('WOFF_ID not configured', { status: 500 });
+  }
+
+  // 認証フロー:
+  // 1. 初回アクセス: woff.login()でLINE WORKS認証画面へリダイレクト
+  // 2. 認証後: code&stateパラメータ付きでこのページにリダイレクト
+  // 3. woff.init()が自動でトークン取得、isLoggedIn()がtrueになる
+
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINE WORKS認証中...</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #00C73C 0%, #00A032 100%);
+      color: white;
+    }
+    .container { text-align: center; padding: 20px; max-width: 500px; }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .status { margin: 20px 0; font-size: 14px; }
+    .error { background: rgba(255,0,0,0.2); padding: 15px; border-radius: 8px; margin-top: 20px; }
+    .fallback { margin-top: 30px; }
+    .fallback a {
+      color: white;
+      background: rgba(0,0,0,0.2);
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .debug { margin-top: 20px; font-size: 11px; opacity: 0.7; text-align: left; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <!-- Eruda デバッガー -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
+
+  <div class="container">
+    <h2>LINE WORKS認証</h2>
+    <div class="spinner" id="spinner"></div>
+    <p class="status" id="status">WOFF SDK初期化中...</p>
+    <div id="error" class="error" style="display: none;"></div>
+    <div class="fallback" id="fallback" style="display: none;">
+      <a href="/login/lineworks">通常のログインに戻る</a>
+    </div>
+    <div class="debug" id="debug"></div>
+  </div>
+
+  <!-- WOFF SDK v3.7.1 (最新版) -->
+  <script charset="utf-8" src="https://static.worksmobile.net/static/wm/woff/edge/3.7.1/sdk.js"></script>
+  <script>
+    const woffId = '${woffId}';
+    // URLパラメータまたはsessionStorageからリダイレクト先を取得
+    const urlRedirect = '${redirect}';
+    const storedRedirect = sessionStorage.getItem('woff_redirect');
+    const finalRedirect = storedRedirect || urlRedirect || '/';
+    // open_external パラメータを取得（外部ブラウザで開くかどうか）
+    const openExternal = new URLSearchParams(window.location.search).get('open_external') || '${url.searchParams.get('open_external') || ''}';
+    const debug = document.getElementById('debug');
+    const status = document.getElementById('status');
+    const spinner = document.getElementById('spinner');
+    const errorDiv = document.getElementById('error');
+    const fallback = document.getElementById('fallback');
+
+    function log(msg) {
+      console.log(msg);
+      debug.textContent += new Date().toISOString().slice(11, 19) + ' ' + msg + '\\n';
+    }
+
+    function showError(msg) {
+      spinner.style.display = 'none';
+      status.textContent = 'エラーが発生しました';
+      errorDiv.textContent = msg;
+      errorDiv.style.display = 'block';
+      fallback.style.display = 'block';
+    }
+
+    async function initWoff() {
+      // デバッグモード: URLに?debug=1があればリダイレクトしない
+      const debugMode = new URLSearchParams(window.location.search).has('debug');
+
+      try {
+        log('WOFF SDK init開始: ' + woffId);
+        log('Debug mode: ' + debugMode);
+        await woff.init({ woffId: woffId });
+        log('WOFF SDK init完了');
+
+        const isInClient = woff.isInClient();
+        const isLoggedIn = woff.isLoggedIn();
+        log('isInClient: ' + isInClient);
+        log('isLoggedIn: ' + isLoggedIn);
+
+        // WOFF contextを表示
+        try {
+          const context = woff.getContext();
+          log('context: ' + JSON.stringify(context));
+        } catch (ce) {
+          log('context error: ' + ce.message);
+        }
+
+        if (debugMode) {
+          log('=== DEBUG MODE - リダイレクトしません ===');
+          spinner.style.display = 'none';
+          status.textContent = 'デバッグモード - init成功';
+          return;
+        }
+
+        // URLパラメータでOAuth認証後かどうかを判定
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasOAuthParams = urlParams.has('code') && urlParams.has('state');
+        log('hasOAuthParams: ' + hasOAuthParams);
+
+        if (isLoggedIn) {
+          // OAuth後のパラメータを履歴から削除（リロード対策）
+          if (window.location.search.includes('code=')) {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, '', cleanUrl);
+          }
+
+          // ログイン済み - トークン取得してサーバーに送信
+          log('ログイン済み - トークン取得');
+          status.textContent = 'ログイン済み - 認証処理中...';
+
+          const accessToken = woff.getAccessToken();
+          const idToken = woff.getIDToken();
+          log('accessToken: ' + (accessToken ? accessToken.substring(0, 20) + '...' : 'null'));
+          log('idToken: ' + (idToken ? idToken.substring(0, 20) + '...' : 'null'));
+
+          // コールバックにトークンを送信してセッション作成
+          const callbackUrl = new URL('${url.origin}/auth/woff/callback');
+          callbackUrl.searchParams.set('redirect', finalRedirect);
+          callbackUrl.searchParams.set('access_token', accessToken || '');
+          callbackUrl.searchParams.set('id_token', idToken || '');
+          if (openExternal) {
+            callbackUrl.searchParams.set('open_external', openExternal);
+          }
+          window.location.href = callbackUrl.toString();
+        } else if (!hasOAuthParams) {
+          // 未ログイン かつ OAuth認証前 - ログイン処理開始
+          log('未ログイン - login開始');
+          status.textContent = 'LINE WORKSログイン画面へリダイレクト...';
+
+          // リダイレクト先をsessionStorageに保存（OAuth後に復元）
+          sessionStorage.setItem('woff_redirect', finalRedirect);
+
+          // woff.login()はページをリダイレクトする
+          // 公式サンプルと同様、パラメータなしで呼び出す
+          // （redirectUriを指定しないとEndpoint URLに戻る）
+          woff.login();
+          // ↑ この後のコードは実行されない（リダイレクトのため）
+        } else {
+          // OAuth認証後だがログイン状態ではない（エラー）
+          log('OAuth認証後だがログインできていない');
+          showError('認証に失敗しました。再度お試しください。');
+        }
+      } catch (e) {
+        log('エラー: ' + e.message);
+        log('エラー詳細: ' + JSON.stringify(e));
+        showError(e.message || String(e));
+      }
+    }
+
+    // SDK読み込み完了をポーリングで待機（Qiita記事推奨パターン）
+    // https://qiita.com/iwaohig/items/186863fcf7e443b90713
+    function waitForWoff() {
+      if (typeof woff !== 'undefined') {
+        initWoff();
+      } else {
+        setTimeout(waitForWoff, 50);
+      }
+    }
+    waitForWoff();
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+// WOFFコールバック処理
+async function handleWoffCallback(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const redirect = url.searchParams.get('redirect') || '/';
+  const accessToken = url.searchParams.get('access_token');
+  const idToken = url.searchParams.get('id_token');
+  // WOFF login()後はcodeパラメータ付きでリダイレクトされる
+  const woffId = (env as { WOFF_ID?: string }).WOFF_ID || '';
+
+  // デバッグ用HTML（トークンがない場合はWOFF SDKでログイン後の処理をする必要がある）
+  // WOFF login()後はcodeパラメータ付きでリダイレクトされるので、再度WOFF SDKで処理
+  if (!accessToken && !idToken) {
+    const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>認証処理中...</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #00C73C 0%, #00A032 100%);
+      color: white;
+    }
+    .container { text-align: center; padding: 20px; max-width: 500px; }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .status { margin: 20px 0; }
+    .debug { margin-top: 20px; font-size: 11px; opacity: 0.7; text-align: left; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>認証処理中...</h2>
+    <div class="spinner"></div>
+    <p class="status" id="status">トークン取得中...</p>
+    <div class="debug" id="debug"></div>
+  </div>
+
+  <script charset="utf-8" src="https://static.worksmobile.net/static/wm/woff/edge/3.7.1/sdk.js"></script>
+  <script>
+    const woffId = '${woffId}';
+    const redirect = '${redirect}';
+    const debug = document.getElementById('debug');
+    const status = document.getElementById('status');
+
+    function log(msg) {
+      console.log(msg);
+      debug.textContent += msg + '\\n';
+    }
+
+    async function processCallback() {
+      try {
+        log('WOFF init: ' + woffId);
+        await woff.init({ woffId: woffId });
+
+        const isLoggedIn = woff.isLoggedIn();
+        log('isLoggedIn: ' + isLoggedIn);
+
+        if (isLoggedIn) {
+          const accessToken = woff.getAccessToken();
+          const idToken = woff.getIDToken();
+          log('トークン取得成功');
+
+          // サーバーにトークンを送信してセッション作成
+          const response = await fetch('/auth/woff/callback?redirect=' + encodeURIComponent(redirect) +
+            '&access_token=' + encodeURIComponent(accessToken || '') +
+            '&id_token=' + encodeURIComponent(idToken || ''));
+
+          if (response.redirected) {
+            window.location.href = response.url;
+          } else {
+            // リダイレクトレスポンスの場合
+            window.location.href = redirect;
+          }
+        } else {
+          log('ログイン状態ではありません');
+          status.textContent = 'ログインが必要です';
+          setTimeout(() => window.location.href = '/login', 2000);
+        }
+      } catch (e) {
+        log('エラー: ' + e);
+        status.textContent = 'エラー: ' + e.message;
+      }
+    }
+
+    // SDK読み込み完了をポーリングで待機
+    function waitForWoff() {
+      if (typeof woff !== 'undefined') {
+        processCallback();
+      } else {
+        setTimeout(waitForWoff, 50);
+      }
+    }
+    waitForWoff();
+  </script>
+</body>
+</html>`;
+
+    return new Response(html, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+
+  // トークンがある場合はユーザー情報を取得してセッション作成
+  if (accessToken) {
+    try {
+      // WOFF APIでユーザー情報取得
+      const userResponse = await fetch('https://www.worksapis.com/v1.0/users/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!userResponse.ok) {
+        console.error('WOFF userinfo failed:', await userResponse.text());
+        return new Response('Failed to get user info', { status: 500 });
+      }
+
+      const userInfo = (await userResponse.json()) as {
+        userId: string;
+        email?: string;
+        userName?: { lastName?: string; firstName?: string };
+      };
+
+      const email = userInfo.email || `${userInfo.userId}@lineworks`;
+      const name = userInfo.userName
+        ? `${userInfo.userName.lastName || ''} ${userInfo.userName.firstName || ''}`.trim()
+        : userInfo.userId;
+
+      console.log('WOFF userInfo:', JSON.stringify(userInfo));
+
+      // セッションCookie作成（lineworks-oauth.tsからインポートする代わりに直接使用）
+      const { createSessionCookie } = await import('./auth/session');
+
+      const sessionCookie = await createSessionCookie(
+        {
+          sub: userInfo.userId,
+          email,
+          name,
+          provider: 'lineworks',
+        },
+        env
+      );
+
+      // WOFF認証成功後は説明画面を表示
+      const externalUrl = `${url.origin}${redirect}`;
+      const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>認証完了</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #00C73C 0%, #00A032 100%);
+      color: white;
+    }
+    .container { text-align: center; padding: 20px; max-width: 400px; }
+    h2 { margin-bottom: 10px; }
+    .btn {
+      display: inline-block;
+      padding: 15px 30px;
+      background: white;
+      color: #00A032;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+      margin: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .btn:hover { background: #f0f0f0; }
+    .instructions {
+      background: rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 15px;
+      margin: 20px 0;
+      text-align: left;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .instructions ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    .instructions li {
+      margin: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>✓ 認証完了</h2>
+    <p>${name} さん</p>
+    <div class="instructions">
+      <strong>外部ブラウザで使用する場合：</strong>
+      <ol>
+        <li>下のボタンを<strong>長押し</strong></li>
+        <li>「新しいタブで開く」を選択</li>
+        <li>開いたブラウザで操作</li>
+      </ol>
+    </div>
+    <p>
+      <a href="${externalUrl}" class="btn">タイムカードを開く</a>
+    </p>
+  </div>
+</body>
+</html>`;
+      return new Response(html, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Set-Cookie': sessionCookie,
+        },
+      });
+    } catch (e) {
+      console.error('WOFF callback error:', e);
+      return new Response('Authentication failed: ' + String(e), { status: 500 });
+    }
+  }
+
+  return new Response('Missing token', { status: 400 });
 }
