@@ -88,3 +88,52 @@ export function getStateCookie(request: Request): string | null {
 export function clearStateCookie(): string {
   return `oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
+
+// 一時トークン（外部ブラウザ遷移用、5分間有効）
+const TEMP_TOKEN_DURATION = 5 * 60; // 5分
+
+export async function createTempToken(
+  payload: Omit<SessionPayload, 'iat' | 'exp'>,
+  env: Env
+): Promise<string> {
+  const secret = new TextEncoder().encode(env.JWT_SECRET);
+  const now = Math.floor(Date.now() / 1000);
+
+  const jwt = await new jose.SignJWT({
+    sub: payload.sub,
+    email: payload.email,
+    name: payload.name,
+    provider: payload.provider,
+    type: 'temp', // 一時トークンであることを示す
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt(now)
+    .setExpirationTime(now + TEMP_TOKEN_DURATION)
+    .sign(secret);
+
+  return jwt;
+}
+
+export async function verifyTempToken(
+  token: string,
+  env: Env
+): Promise<Omit<SessionPayload, 'iat' | 'exp'> | null> {
+  try {
+    const secret = new TextEncoder().encode(env.JWT_SECRET);
+    const { payload } = await jose.jwtVerify(token, secret);
+
+    // 一時トークンかどうか確認
+    if (payload.type !== 'temp') {
+      return null;
+    }
+
+    return {
+      sub: payload.sub as string,
+      email: payload.email as string,
+      name: payload.name as string,
+      provider: payload.provider as SessionPayload['provider'],
+    };
+  } catch {
+    return null;
+  }
+}

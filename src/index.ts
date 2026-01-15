@@ -13,6 +13,9 @@ import {
   handleLineworksLogin,
   handleLineworksCallback,
   clearSessionCookie,
+  createTempToken,
+  verifyTempToken,
+  createSessionCookie,
   type Env as AuthEnv,
 } from './auth';
 
@@ -80,6 +83,16 @@ export default {
     // WOFFコールバック（WOFFトークン検証）
     if (path === '/auth/woff/callback') {
       return handleWoffCallback(request, env);
+    }
+
+    // WOFFミニアプリランディングページ（外部ブラウザで開くボタン）
+    if (path === '/woff') {
+      return getWoffLandingPage(request, env);
+    }
+
+    // 一時トークンでセッション作成（外部ブラウザ用）
+    if (path === '/auth/token') {
+      return handleTokenAuth(request, env);
     }
 
     // ログアウト
@@ -1810,6 +1823,35 @@ function getWoffLoginPage(request: Request, env: Env): Response {
   });
 }
 
+// 一時トークンでセッション作成（外部ブラウザ用）
+async function handleTokenAuth(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token');
+  const redirect = url.searchParams.get('redirect') || '/';
+
+  if (!token) {
+    return new Response('Missing token', { status: 400 });
+  }
+
+  // トークン検証
+  const payload = await verifyTempToken(token, env);
+  if (!payload) {
+    return new Response('Invalid or expired token', { status: 401 });
+  }
+
+  // セッションCookie作成
+  const sessionCookie = await createSessionCookie(payload, env);
+
+  // リダイレクト
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: redirect,
+      'Set-Cookie': sessionCookie,
+    },
+  });
+}
+
 // WOFFコールバック処理
 async function handleWoffCallback(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -1967,82 +2009,22 @@ async function handleWoffCallback(request: Request, env: Env): Promise<Response>
         env
       );
 
-      // WOFF認証成功後は説明画面を表示
-      const externalUrl = `${url.origin}${redirect}`;
-      const html = `<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>認証完了</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      background: linear-gradient(135deg, #00C73C 0%, #00A032 100%);
-      color: white;
-    }
-    .container { text-align: center; padding: 20px; max-width: 400px; }
-    h2 { margin-bottom: 10px; }
-    .btn {
-      display: inline-block;
-      padding: 15px 30px;
-      background: white;
-      color: #00A032;
-      text-decoration: none;
-      border-radius: 8px;
-      font-weight: bold;
-      margin: 10px;
-      border: none;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .btn:hover { background: #f0f0f0; }
-    .instructions {
-      background: rgba(255,255,255,0.15);
-      border-radius: 10px;
-      padding: 15px;
-      margin: 20px 0;
-      text-align: left;
-      font-size: 14px;
-      line-height: 1.6;
-    }
-    .instructions ol {
-      margin: 10px 0;
-      padding-left: 20px;
-    }
-    .instructions li {
-      margin: 8px 0;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>✓ 認証完了</h2>
-    <p>${name} さん</p>
-    <div class="instructions">
-      <strong>外部ブラウザで使用する場合：</strong>
-      <ol>
-        <li>下のボタンを<strong>長押し</strong></li>
-        <li>「新しいタブで開く」を選択</li>
-        <li>開いたブラウザで操作</li>
-      </ol>
-    </div>
-    <p>
-      <a href="${externalUrl}" class="btn">タイムカードを開く</a>
-    </p>
-  </div>
-</body>
-</html>`;
-      return new Response(html, {
+      // WOFF認証成功後は一時トークンを生成してWOFFランディングページにリダイレクト
+      // 外部ブラウザで開いたときにトークンを検証してセッションを作成する
+      const tempToken = await createTempToken(
+        {
+          sub: userInfo.userId,
+          email,
+          name,
+          provider: 'lineworks',
+        },
+        env
+      );
+
+      return new Response(null, {
+        status: 302,
         headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Set-Cookie': sessionCookie,
+          Location: '/woff?dest=' + encodeURIComponent(redirect) + '&token=' + encodeURIComponent(tempToken),
         },
       });
     } catch (e) {
@@ -2052,4 +2034,181 @@ async function handleWoffCallback(request: Request, env: Env): Promise<Response>
   }
 
   return new Response('Missing token', { status: 400 });
+}
+
+// WOFFミニアプリランディングページ
+// LINE WORKSアプリ内から開き、外部ブラウザでタイムカードを開く
+function getWoffLandingPage(request: Request, env: Env): Response {
+  const url = new URL(request.url);
+  const woffId = (env as { WOFF_ID?: string }).WOFF_ID || '';
+  const baseUrl = url.origin;
+  // destパラメータがあればそのURLを、なければトップページを開く
+  const dest = url.searchParams.get('dest') || '/';
+  // 一時トークン（外部ブラウザでセッション作成用）
+  const token = url.searchParams.get('token') || '';
+
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>大石社タイムカード</title>
+  <script charset="utf-8" src="https://static.worksmobile.net/static/wm/woff/edge/3.7.1/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #00C73C 0%, #00A032 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      text-align: center;
+      padding: 30px 20px;
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 {
+      color: white;
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: rgba(255,255,255,0.8);
+      font-size: 0.9rem;
+      margin-bottom: 30px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 18px 24px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 15px;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .btn:active {
+      transform: scale(0.98);
+    }
+    .btn-primary {
+      background: white;
+      color: #00A032;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    .btn:disabled {
+      background: #ccc;
+      color: #666;
+    }
+    .status {
+      color: rgba(255,255,255,0.7);
+      font-size: 0.85rem;
+      margin-top: 20px;
+      min-height: 24px;
+    }
+    .error {
+      background: rgba(255,0,0,0.2);
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 0.9rem;
+    }
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top: 3px solid white;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>大石社タイムカード</h1>
+    <p class="subtitle">認証完了しました</p>
+
+    <button class="btn btn-primary" id="btn-open" disabled>
+      タイムカードを開く
+    </button>
+
+    <div class="status" id="status">
+      <span class="spinner"></span>準備中...
+    </div>
+    <div id="error"></div>
+  </div>
+
+  <script>
+    const WOFF_ID = '${woffId}';
+    const BASE_URL = '${baseUrl}';
+    const DEST = '${dest}';
+    const TOKEN = '${token}';
+    const btnOpen = document.getElementById('btn-open');
+    const statusEl = document.getElementById('status');
+    const errorEl = document.getElementById('error');
+
+    function showStatus(msg, showSpinner = false) {
+      statusEl.innerHTML = (showSpinner ? '<span class="spinner"></span>' : '') + msg;
+    }
+
+    function showError(msg) {
+      errorEl.innerHTML = '<div class="error">' + msg + '</div>';
+    }
+
+    async function initWoff() {
+      try {
+        await woff.init({ woffId: WOFF_ID });
+
+        // ボタン有効化
+        showStatus('ボタンを押してブラウザで開いてください');
+        btnOpen.disabled = false;
+
+        btnOpen.onclick = () => {
+          showStatus('外部ブラウザで開いています...', true);
+          // トークンがあれば認証エンドポイント経由、なければ直接開く
+          const targetUrl = TOKEN
+            ? BASE_URL + '/auth/token?token=' + encodeURIComponent(TOKEN) + '&redirect=' + encodeURIComponent(DEST)
+            : BASE_URL + DEST;
+          woff.openWindow({
+            url: targetUrl,
+            external: true
+          });
+        };
+
+      } catch (e) {
+        showStatus('エラーが発生しました');
+        showError(e.message || String(e));
+      }
+    }
+
+    // SDK読み込み待機
+    function waitForWoff() {
+      if (typeof woff !== 'undefined') {
+        initWoff();
+      } else {
+        setTimeout(waitForWoff, 50);
+      }
+    }
+    waitForWoff();
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
 }
