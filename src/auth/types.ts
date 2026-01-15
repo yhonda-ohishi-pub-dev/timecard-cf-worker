@@ -8,6 +8,7 @@ export interface Env {
   LINEWORKS_CONFIG: string; // JSON形式
   CF_ACCESS_TEAM_NAME: string;
   CF_ACCESS_AUD?: string;
+  ALLOWED_EMAILS?: string; // カンマ区切りの許可メールリスト
 }
 
 export interface GoogleOAuthConfig {
@@ -18,8 +19,6 @@ export interface GoogleOAuthConfig {
 export interface LineworksConfig {
   client_id: string;
   client_secret: string;
-  service_account: string;
-  private_key: string;
 }
 
 export interface SessionPayload {
@@ -39,4 +38,25 @@ export interface AuthResult {
 export interface OAuthState {
   redirect: string;
   nonce: string;
+}
+
+// メール許可チェック（@で始まるエントリーはドメインフィルター）
+export function isEmailAllowed(email: string, allowedEmails: string): boolean {
+  const emailLower = email.toLowerCase();
+  const entries = allowedEmails.split(',').map((e) => e.trim().toLowerCase());
+
+  for (const entry of entries) {
+    if (entry.startsWith('@')) {
+      // ドメインフィルター
+      if (emailLower.endsWith(entry)) {
+        return true;
+      }
+    } else {
+      // 完全一致
+      if (emailLower === entry) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

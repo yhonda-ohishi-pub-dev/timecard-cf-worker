@@ -1,7 +1,6 @@
 // LINE WORKS OAuth 2.0
 
-import * as jose from 'jose';
-import type { Env, LineworksConfig, OAuthState } from './types';
+import { type Env, type LineworksConfig, type OAuthState, isEmailAllowed } from './types';
 import { createSessionCookie, createStateCookie, getStateCookie, clearStateCookie } from './session';
 
 const LINEWORKS_AUTH_URL = 'https://auth.worksmobile.com/oauth2/v2.0/authorize';
@@ -15,24 +14,6 @@ function getConfig(env: Env): LineworksConfig {
 function getRedirectUri(request: Request): string {
   const url = new URL(request.url);
   return `${url.origin}/auth/lineworks/callback`;
-}
-
-// Service Account JWT生成（アクセストークン取得用）
-async function createServiceAccountJwt(config: LineworksConfig): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-
-  // PEM形式の秘密鍵をインポート
-  const privateKey = await jose.importPKCS8(config.private_key, 'RS256');
-
-  const jwt = await new jose.SignJWT({})
-    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-    .setIssuer(config.client_id)
-    .setSubject(config.service_account)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
-    .sign(privateKey);
-
-  return jwt;
 }
 
 export function handleLineworksLogin(request: Request, env: Env): Response {
@@ -94,9 +75,6 @@ export async function handleLineworksCallback(
 
   const config = getConfig(env);
 
-  // Service Account JWTを生成
-  const assertion = await createServiceAccountJwt(config);
-
   // トークン交換
   const tokenResponse = await fetch(LINEWORKS_TOKEN_URL, {
     method: 'POST',
@@ -140,6 +118,17 @@ export async function handleLineworksCallback(
     ? `${userInfo.userName.lastName || ''} ${userInfo.userName.firstName || ''}`.trim()
     : userInfo.userId;
 
+  console.log('LINE WORKS userInfo:', JSON.stringify(userInfo));
+  console.log('LINE WORKS email:', email);
+
+  // メール許可リストチェック
+  if (env.ALLOWED_EMAILS && !isEmailAllowed(email, env.ALLOWED_EMAILS)) {
+    return new Response('このメールアドレスは許可されていません', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+
   // セッションCookie作成
   const sessionCookie = await createSessionCookie(
     {
@@ -151,11 +140,10 @@ export async function handleLineworksCallback(
     env
   );
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: state.redirect,
-      'Set-Cookie': [sessionCookie, clearStateCookie()].join(', '),
-    },
-  });
+  const headers = new Headers();
+  headers.set('Location', state.redirect);
+  headers.append('Set-Cookie', sessionCookie);
+  headers.append('Set-Cookie', clearStateCookie());
+
+  return new Response(null, { status: 302, headers });
 }

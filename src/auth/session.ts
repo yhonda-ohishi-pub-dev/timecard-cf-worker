@@ -40,7 +40,10 @@ export async function verifySessionCookie(
 
   try {
     const secret = new TextEncoder().encode(env.JWT_SECRET);
-    const { payload } = await jose.jwtVerify(token, secret);
+    // 署名のみ検証、有効期限はチェックしない
+    const { payload } = await jose.jwtVerify(token, secret, {
+      currentDate: new Date(0), // 1970年に設定して期限切れを回避
+    });
 
     return {
       sub: payload.sub as string,

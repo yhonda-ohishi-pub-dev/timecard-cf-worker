@@ -1,6 +1,6 @@
 // Google OAuth 2.0
 
-import type { Env, GoogleOAuthConfig, OAuthState } from './types';
+import { type Env, type GoogleOAuthConfig, type OAuthState, isEmailAllowed } from './types';
 import { createSessionCookie, createStateCookie, getStateCookie, clearStateCookie } from './session';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -117,6 +117,14 @@ export async function handleGoogleCallback(
     name: string;
   };
 
+  // メール許可リストチェック
+  if (env.ALLOWED_EMAILS && !isEmailAllowed(userInfo.email, env.ALLOWED_EMAILS)) {
+    return new Response('このメールアドレスは許可されていません', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+
   // セッションCookie作成
   const sessionCookie = await createSessionCookie(
     {
@@ -128,11 +136,10 @@ export async function handleGoogleCallback(
     env
   );
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: state.redirect,
-      'Set-Cookie': [sessionCookie, clearStateCookie()].join(', '),
-    },
-  });
+  const headers = new Headers();
+  headers.set('Location', state.redirect);
+  headers.append('Set-Cookie', sessionCookie);
+  headers.append('Set-Cookie', clearStateCookie());
+
+  return new Response(null, { status: 302, headers });
 }
