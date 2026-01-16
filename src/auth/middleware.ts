@@ -7,7 +7,6 @@ import { verifySessionCookie } from './session';
 // 認証不要のパス
 const PUBLIC_PATHS = [
   '/login',
-  '/login/page',
   '/login/google',
   '/login/lineworks',
   '/login/lineworks/app',
