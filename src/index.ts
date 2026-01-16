@@ -48,9 +48,11 @@ export default {
     }
 
     // === 認証関連ルート ===
-    // ログインページ
+    // ログインページ（JSで認証チェック後リダイレクト）
     if (path === '/login') {
-      return new Response(getLoginPage(), {
+      const url = new URL(request.url);
+      const redirect = url.searchParams.get('redirect') || '/';
+      return new Response(getLoginPageWithAuthCheck(redirect), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
@@ -126,6 +128,21 @@ export default {
       const id = env.WEBSOCKET_HIBERNATION.idFromName('main');
       const stub = env.WEBSOCKET_HIBERNATION.get(id);
       return stub.fetch(new Request(new URL('/broadcast', request.url), request));
+    }
+
+    // 認証チェックAPI（JSから呼び出し用）
+    if (path === '/api/auth/check') {
+      const auth = await authMiddleware(request, env);
+      return new Response(JSON.stringify({ authenticated: auth.authenticated }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
+    // 通常のログインページ（認証チェック後に表示）
+    if (path === '/login/page') {
+      return new Response(getLoginPage(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
     }
 
     // API routes
@@ -1474,6 +1491,44 @@ function getLineworksAppLoginPage(request: Request, env: Env): Response {
       'Set-Cookie': `oauth_state=${stateStr}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
     },
   });
+}
+
+// ログインページ（認証チェック付き - 10秒間リトライ）
+function getLoginPageWithAuthCheck(redirect: string): string {
+  const safeRedirect = redirect.replace(/"/g, '&quot;');
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ログイン - 大石社タイムカード</title>
+</head>
+<body>
+  <p>認証確認中...</p>
+  <script>
+    (async function() {
+      // 10秒間、500ms間隔でリトライ（最大20回）
+      for (let i = 0; i < 20; i++) {
+        try {
+          const res = await fetch('/api/auth/check', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.authenticated) {
+              window.location.replace("${safeRedirect}");
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Auth check failed:', e);
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      // 10秒経っても認証されない場合、通常のログインページを表示
+      window.location.replace('/login/page');
+    })();
+  </script>
+</body>
+</html>`;
 }
 
 // ログインページ

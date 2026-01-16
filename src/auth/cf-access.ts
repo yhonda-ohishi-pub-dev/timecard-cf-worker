@@ -38,6 +38,9 @@ export async function verifyCfAccessJwt(
   const jwt = request.headers.get('CF-Access-Jwt-Assertion');
   if (!jwt) return null;
 
+  // CF_ACCESS_TEAM_NAMEが未設定の場合はスキップ
+  if (!env.CF_ACCESS_TEAM_NAME) return null;
+
   try {
     const keys = await getCerts(env.CF_ACCESS_TEAM_NAME);
     const jwks = jose.createLocalJWKSet({ keys });

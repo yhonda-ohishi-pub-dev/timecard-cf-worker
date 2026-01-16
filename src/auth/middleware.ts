@@ -7,6 +7,7 @@ import { verifySessionCookie } from './session';
 // 認証不要のパス
 const PUBLIC_PATHS = [
   '/login',
+  '/login/page',
   '/login/google',
   '/login/lineworks',
   '/login/lineworks/app',
@@ -20,6 +21,7 @@ const PUBLIC_PATHS = [
   '/icon-192.png',
   '/icon-512.png',
   '/api/broadcast', // バックエンドからのpush用
+  '/api/auth/check', // JS認証チェック用
 ];
 
 export function isPublicPath(path: string): boolean {
