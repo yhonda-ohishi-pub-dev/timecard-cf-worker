@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "tc-ohishi Auth Header Injector",
+  "version": "1.0.0",
+  "description": "tc-ohishi.mtamaramu.com 宛リクエストにのみ CF-Access-Jwt-Assertion ヘッダーを注入する個人用拡張 (ModHeader 代替)",
+  "permissions": ["declarativeNetRequestWithHostAccess", "storage"],
+  "host_permissions": ["https://tc-ohishi.mtamaramu.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "tc-ohishi Auth Header"
+  }
+}
