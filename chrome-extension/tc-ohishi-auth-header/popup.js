@@ -1,22 +1,24 @@
 const RULE_ID = 1;
-const HEADER_NAME = 'CF-Access-Jwt-Assertion';
 const TARGET_HOST = 'tc-ohishi.mtamaramu.com';
+const TARGET_URL = `https://${TARGET_HOST}/`;
+const SESSION_COOKIE_NAME = 'tc_session';
 
 const enabledEl = document.getElementById('enabled');
-const jwtEl = document.getElementById('jwt');
 const statusEl = document.getElementById('status');
 
 function setStatus(text) {
   statusEl.textContent = text;
 }
 
-function buildRule(jwt) {
+function buildRule(cookieValue) {
   return {
     id: RULE_ID,
     priority: 1,
     action: {
       type: 'modifyHeaders',
-      requestHeaders: [{ header: HEADER_NAME, operation: 'set', value: jwt }],
+      requestHeaders: [
+        { header: 'Cookie', operation: 'set', value: `${SESSION_COOKIE_NAME}=${cookieValue}` },
+      ],
     },
     condition: {
       urlFilter: `||${TARGET_HOST}`,
@@ -39,27 +41,42 @@ function buildRule(jwt) {
   };
 }
 
-async function applyRule(enabled, jwt) {
-  const shouldApply = enabled && jwt.length > 0;
+async function applyRule(enabled, cookieValue) {
+  const shouldApply = enabled && !!cookieValue;
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: [RULE_ID],
-    addRules: shouldApply ? [buildRule(jwt)] : [],
+    addRules: shouldApply ? [buildRule(cookieValue)] : [],
   });
   return shouldApply;
 }
 
 async function load() {
-  const { enabled = false, jwt = '' } = await chrome.storage.local.get(['enabled', 'jwt']);
+  const { enabled = false } = await chrome.storage.local.get(['enabled']);
   enabledEl.checked = enabled;
-  jwtEl.value = jwt;
 }
 
-document.getElementById('save').addEventListener('click', async () => {
+document.getElementById('capture').addEventListener('click', async () => {
+  setStatus('現在のログイン状態を確認中...');
+  const cookie = await chrome.cookies.get({ url: TARGET_URL, name: SESSION_COOKIE_NAME });
+  if (!cookie) {
+    setStatus(
+      `${SESSION_COOKIE_NAME} Cookie が見つかりません。先に https://${TARGET_HOST}/ でログインしてから、もう一度押してください。`
+    );
+    return;
+  }
+  const enabled = true;
+  await chrome.storage.local.set({ enabled, cookieValue: cookie.value });
+  enabledEl.checked = enabled;
+  await applyRule(enabled, cookie.value);
+  setStatus(`保存して注入を有効化しました (${new Date().toLocaleString('ja-JP')})`);
+});
+
+enabledEl.addEventListener('change', async () => {
+  const { cookieValue = '' } = await chrome.storage.local.get(['cookieValue']);
   const enabled = enabledEl.checked;
-  const jwt = jwtEl.value.trim();
-  await chrome.storage.local.set({ enabled, jwt });
-  const applied = await applyRule(enabled, jwt);
-  setStatus(applied ? '保存して注入を有効化しました。' : '保存しました (現在は無効 / JWT未入力)。');
+  await chrome.storage.local.set({ enabled });
+  const applied = await applyRule(enabled, cookieValue);
+  setStatus(applied ? '有効化しました。' : '無効化しました。');
 });
 
 document.getElementById('test').addEventListener('click', async () => {
