@@ -201,6 +201,9 @@ service ICNonRegService {
 
   // Web NFCから直接IC登録 (ic_non_regedにregistered_idを設定)
   rpc RegisterDirect(RegisterDirectRequest) returns (RegisterDirectResponse);
+
+  // IC削除 (Socket.IO経由でPythonクライアントに通知)
+  rpc DeleteIc(DeleteIcRequest) returns (DeleteIcResponse);
 }
 
 message ICNonReg {
@@ -234,6 +237,15 @@ message RegisterDirectResponse {
   optional string ic_id = 3;
   optional int32 driver_id = 4;
   optional string driver_name = 5;
+}
+
+message DeleteIcRequest {
+  string ic_id = 1;
+}
+
+message DeleteIcResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 // =============================================================================
@@ -329,4 +341,50 @@ message ConnectedClient {
 message ClientList {
   repeated ConnectedClient clients = 1;
   int32 total = 2;
+}
+
+// =============================================================================
+// Version Service - ビルド情報
+// =============================================================================
+
+service VersionService {
+  // ビルドバージョン情報取得
+  rpc GetVersion(google.protobuf.Empty) returns (VersionInfo);
+}
+
+message VersionInfo {
+  string git_commit = 1;      // Git commit hash (短縮形)
+  string git_commit_full = 2; // Git commit hash (完全形)
+  string build_date = 3;      // ビルド日時 (ISO 8601)
+  string rust_version = 4;    // Rustコンパイラバージョン
+}
+
+// =============================================================================
+// CardLedger Service - カード台帳 (ic_id テーブル) の列挙
+// =============================================================================
+
+service CardLedgerService {
+  // カード台帳を ic_id 昇順で 1 chunk 返す (keyset ページング)
+  rpc ListCards(ListCardsRequest) returns (CardLedgerChunk);
+}
+
+message ListCardsRequest {
+  // 直前の chunk の next_cursor。最初の呼び出しでは未指定。
+  optional string cursor = 1;
+  // 1 chunk の最大件数。未指定/0以下/上限超過は既定値・上限に丸める。
+  optional int32 chunk_size = 2;
+}
+
+message CardLedgerEntry {
+  string ic_id = 1;         // カードID (DBの値をそのまま返す。正規化は受け取り側の責務)
+  optional int32 emp_id = 2; // 紐づく従業員ID (未設定なら空)
+  optional string date = 3;  // 採用した行の日時 "YYYY-MM-DD HH:MM:SS"
+}
+
+message CardLedgerChunk {
+  repeated CardLedgerEntry entries = 1;
+  // 続きがあるときだけ入る。次の ListCards に cursor として渡す。
+  optional string next_cursor = 2;
+  // 実際に適用された chunk_size (丸めた結果)
+  int32 chunk_size = 3;
 }

@@ -20,6 +20,8 @@ import {
   ICLogWithDriverListSchema,
   ClientListSchema,
   VersionInfoSchema,
+  ListCardsRequestSchema,
+  CardLedgerChunkSchema,
 } from './gen/timecard_pb';
 import { EmptySchema } from '@bufbuild/protobuf/wkt';
 
@@ -403,6 +405,34 @@ export class GrpcWebClient {
       connected_at: client.connectedAt,
       last_activity: client.lastActivity,
     }));
+  }
+
+  // CardLedger Service - ICカード台帳を ic_id 昇順で 1 chunk 取得
+  //
+  // ★ 終端の判定は next_cursor が未設定かどうかだけ。entries.length では判定しない
+  //   (総数がちょうど chunk_size の倍数のとき、最後の chunk は満杯かつ終端になる)。
+  // ★ ic_id は無加工でそのまま返す (正規化は取り込み先の 1 か所だけ)。
+  async listCards(cursor?: string): Promise<{
+    entries: Array<{ icId: string; empId?: number }>;
+    nextCursor?: string;
+    chunkSize: number;
+  }> {
+    const response = await this.callGrpcWeb(
+      'timecard.CardLedgerService',
+      'ListCards',
+      ListCardsRequestSchema,
+      CardLedgerChunkSchema,
+      // 初回は cursor を入れない。chunk_size は送らない (上流の既定に任せる)。
+      cursor === undefined ? {} : { cursor }
+    );
+    return {
+      entries: response.entries.map((e: { icId: string; empId?: number }) => ({
+        icId: e.icId,
+        empId: e.empId,
+      })),
+      nextCursor: response.nextCursor,
+      chunkSize: response.chunkSize,
+    };
   }
 
   // Version Service - APIバージョン情報取得
