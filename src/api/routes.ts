@@ -1,8 +1,13 @@
 // API Routes - Proxy to Rust gRPC-Web backend
 
 import { GrpcWebClient } from '../grpc-client';
+import {
+  CARD_LEDGER_IMPORT_PATH,
+  handleCardLedgerImport,
+  type CardLedgerEnv,
+} from '../card-ledger/route';
 
-export interface Env {
+export interface Env extends CardLedgerEnv {
   GRPC_API_URL: string;
 }
 
@@ -87,6 +92,12 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (path === '/api/clients' && request.method === 'GET') {
       const clients = await grpcClient.getClients();
       return jsonResponse({ clients, total: clients.length });
+    }
+
+    // カード台帳の初回移行 (手で 1 回だけ叩く管理用の口。cron は無い)。
+    // /api/ 配下なので index.ts の認証を通った後にしか来ない。
+    if (path === CARD_LEDGER_IMPORT_PATH && request.method === 'POST') {
+      return handleCardLedgerImport(request, env);
     }
 
     // APIバージョン情報

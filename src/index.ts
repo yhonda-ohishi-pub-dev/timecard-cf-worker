@@ -18,10 +18,11 @@ import {
   createSessionCookie,
   type Env as AuthEnv,
 } from './auth';
+import type { CardLedgerEnv } from './card-ledger/route';
 
 export { WebSocketHibernationDO };
 
-export interface Env extends AuthEnv {
+export interface Env extends AuthEnv, CardLedgerEnv {
   __STATIC_CONTENT: KVNamespace;
 }
 

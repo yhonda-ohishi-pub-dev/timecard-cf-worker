@@ -11,6 +11,17 @@ bindings = [
 tag = "v1"
 new_classes = ["WebSocketHibernationDO"]
 
+# auth-worker の RPC entrypoint (InternalEntrypoint) への service binding。
+# カード台帳の取り込みで PUT /api/timecard/cards/bulk-by-code を転送してもらう
+# (auth-worker が X-Tenant-ID の注入と OIDC の mint を担当する)。
+#
+# ★ Workers RPC の名前付きメソッドは service binding からしか呼べず HTTP の面に
+#   出ないので、共有シークレットをこの Worker にもオンプレ側にも置かずに済む。
+[[services]]
+binding = "AUTH_WORKER_RPC"
+service = "auth-worker"
+entrypoint = "InternalEntrypoint"
+
 # Environment variables (non-secret)
 [vars]
 CF_ACCESS_TEAM_NAME = "mtamaramu"
@@ -21,6 +32,9 @@ WOFF_ID = "bY8PaaudJVkZqS9zhXzHtQ"
 # GOOGLE_OAUTH_CONFIG - JSON配列形式 [{"client_id":"...","client_secret":"..."}]
 # LINEWORKS_CONFIG - JSON形式 {"client_id":"...","client_secret":"...","service_account":"...","private_key":"..."}
 # CF_ACCESS_AUD - Cloudflare Access Application Audience Tag
+# ALC_TENANT_ID - カード台帳の取り込み先 tenant。auth-worker 越しに X-Tenant-ID として
+#                 注入される。★ 値はここにもコードにも書かない (この repo は public)。
+#                 呼び出し側 (HTTP リクエスト) にも決めさせない
 
 # Development settings
 [dev]
