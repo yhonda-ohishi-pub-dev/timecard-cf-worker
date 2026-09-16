@@ -4,3 +4,7 @@ node_modules/
 dist/
 *.log
 chrome-extension/*.zip
+
+# 開発ツールが作る作業用 worktree (repo のコピーがまるごと入る)。
+# 追跡すると git add -A で worktree 一式が commit に入る。
+.claude/worktrees/
