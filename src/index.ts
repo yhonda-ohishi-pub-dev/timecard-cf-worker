@@ -411,6 +411,22 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
       });
     }
 
+    // IC カード登録・削除の alc 転送結果を画面向けの文言に落とす。
+    // skip / 失敗の理由は黙って隠さず、reason をそのまま出す (未知の reason も含む)。
+    window.describeAlcSync = function describeAlcSync(alc) {
+      if (!alc) return null;
+      if (alc.ok) return { level: 'success', text: 'alc 同期: 完了' };
+      const reasons = {
+        not_configured: 'alc 未設定のため同期していません',
+        employee_not_found: 'alc 側に該当する社員番号が見つかりません',
+        invalid_card_id: 'カードIDの形式が不正です',
+        out_of_scope: 'alc に別経路で登録されたカードのため削除できません',
+        not_found: 'alc 側に該当カードが見つかりません',
+      };
+      const detail = reasons[alc.reason] || ('reason: ' + alc.reason);
+      return { level: 'danger', text: 'alc 同期: 失敗 (' + detail + ')' };
+    };
+
     // Load API version info
     async function loadApiVersion() {
       try {
@@ -782,6 +798,10 @@ function getIcNonRegPage(): string {
                     nfcResult.innerHTML = '<div class="alert alert-success py-2">' +
                       result.driver_name + ' (ID:' + result.driver_id + ') に登録予約完了<br>' +
                       '<small>次回ICタッチ時に登録されます</small></div>';
+                    const alcInfo = window.describeAlcSync(result.alc);
+                    if (alcInfo) {
+                      nfcResult.innerHTML += '<div class="alert alert-' + alcInfo.level + ' py-2 mt-1">' + alcInfo.text + '</div>';
+                    }
                     nfcStatus.innerHTML = '<span class="badge bg-success">完了</span>';
                     loadNonRegIc(); // Reload table
                   } else {
@@ -876,7 +896,11 @@ function getIcNonRegPage(): string {
             body: JSON.stringify({ ic_id: icId, driver_id: driverId })
           });
           if (response.ok) {
-            alert('登録しました');
+            const result = await response.json();
+            const alcInfo = window.describeAlcSync(result.alc);
+            alert(alcInfo && alcInfo.level !== 'success' ?
+              '登録しました\\n⚠ ' + alcInfo.text :
+              '登録しました');
             location.reload();
           } else {
             alert('登録に失敗しました');
@@ -896,7 +920,14 @@ function getIcNonRegPage(): string {
             body: JSON.stringify({ ic_id: icId })
           });
           if (response.ok) {
-            alert('取消しました');
+            const result = await response.json();
+            const alcInfo = window.describeAlcSync(result.alc);
+            if (alcInfo && alcInfo.level !== 'success') {
+              // ★ 削除 (alc 側) の失敗は握り潰さない。赤く出し、再実行を促す。
+              alert('取消しました (オンプレ側)\\n⚠ ' + alcInfo.text + '\\nもう一度取消を実行してください (再実行は安全です)');
+            } else {
+              alert('取消しました');
+            }
             location.reload();
           } else {
             alert('取消に失敗しました');
@@ -981,6 +1012,17 @@ function getDeleteIcPage(): string {
               const result = await response.json();
               if (result.success) {
                 resultDiv.innerHTML = '<div class="alert alert-success">' + result.message + '</div>';
+                const alcInfo = window.describeAlcSync(result.alc);
+                if (alcInfo) {
+                  if (alcInfo.level === 'success') {
+                    resultDiv.innerHTML += '<div class="alert alert-success mt-1">' + alcInfo.text + '</div>';
+                  } else {
+                    // ★ alc 側の削除失敗は握り潰さない。赤く出し、再スキャンを促す
+                    //    (delete_ic はセントラル DB を触らないので、拾えるのはここだけ)。
+                    resultDiv.innerHTML += '<div class="alert alert-danger mt-1">' + alcInfo.text +
+                      '<br>もう一度スキャンしてください (再実行は安全です)</div>';
+                  }
+                }
               } else {
                 resultDiv.innerHTML = '<div class="alert alert-danger">エラー: ' + result.message + '</div>';
               }

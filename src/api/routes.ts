@@ -6,6 +6,7 @@ import {
   handleCardLedgerImport,
   type CardLedgerEnv,
 } from '../card-ledger/route';
+import { upsertOneCard, deleteOneCard } from '../card-ledger/sync-one';
 
 export interface Env extends CardLedgerEnv {
   GRPC_API_URL: string;
@@ -53,13 +54,17 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (path === '/api/ic_non_reg/register' && request.method === 'POST') {
       const body = await request.json() as { ic_id: string; driver_id: number };
       const result = await grpcClient.registerIc(body.ic_id, body.driver_id);
-      return jsonResponse(result);
+      // オンプレ成功後に alc へも転送する。code は String(driver_id) — Number() は挟まない。
+      const alc = await upsertOneCard(env, { code: String(body.driver_id), cardId: body.ic_id });
+      return jsonResponse({ ...result, alc });
     }
 
     if (path === '/api/ic_non_reg/cancel' && request.method === 'POST') {
       const body = await request.json() as { ic_id: string };
       const result = await grpcClient.cancelIcReservation(body.ic_id);
-      return jsonResponse(result);
+      // オンプレの取消 (中央 DB は触らない) の後、alc 側の行も消す。失敗は握り潰さない。
+      const alc = await deleteOneCard(env, { cardId: body.ic_id });
+      return jsonResponse({ ...result, alc });
     }
 
     if (path === '/api/ic_log' && request.method === 'GET') {
@@ -71,14 +76,21 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (path === '/api/ic/register_direct' && request.method === 'POST') {
       const body = await request.json() as { ic_id: string; driver_id: number };
       const result = await grpcClient.registerDirectIc(body.ic_id, body.driver_id);
-      return jsonResponse(result);
+      if (!result.success) return jsonResponse(result);
+      const alc = await upsertOneCard(env, { code: String(body.driver_id), cardId: body.ic_id });
+      return jsonResponse({ ...result, alc });
     }
 
     // IC削除（Socket.IO経由でPythonクライアントに通知）
     if (path === '/api/ic/delete' && request.method === 'POST') {
       const body = await request.json() as { ic_id: string };
       const result = await grpcClient.deleteIc(body.ic_id);
-      return jsonResponse(result);
+      if (!result.success) return jsonResponse(result);
+      // ★ delete_ic はセントラル DB を触らない (socket.io に emit するだけ)。
+      //   突き合わせで拾えない削除を、ここで alc へ転送するのが唯一の手段。
+      //   失敗は握り潰さない — 画面 (src/index.ts) が赤く出す。
+      const alc = await deleteOneCard(env, { cardId: body.ic_id });
+      return jsonResponse({ ...result, alc });
     }
 
     // 最新のタイムカード記録（ドライバー名付き）
