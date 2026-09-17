@@ -415,7 +415,15 @@ function getBaseTemplate(title: string, content: string, scripts: string = ''): 
     // skip / 失敗の理由は黙って隠さず、reason をそのまま出す (未知の reason も含む)。
     window.describeAlcSync = function describeAlcSync(alc) {
       if (!alc) return null;
-      if (alc.ok) return { level: 'success', text: 'alc 同期: 完了' };
+      if (alc.ok) {
+        if (alc.pending) {
+          return {
+            level: 'info',
+            text: '登録しました。alc 側の社員がまだ同期されていないため、社員が同期された時点で自動的に結び付きます',
+          };
+        }
+        return { level: 'success', text: 'alc 同期: 完了' };
+      }
       const reasons = {
         not_configured: 'alc 未設定のため同期していません',
         employee_not_found: 'alc 側に該当する社員番号が見つかりません',

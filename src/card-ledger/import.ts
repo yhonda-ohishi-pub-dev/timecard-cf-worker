@@ -68,6 +68,11 @@ export interface BulkUpsertResponse {
   created: number;
   updated: number;
   unchanged: number;
+  /**
+   * 社員がまだ同期されておらず未結び付きのまま作成した件数 (`#c644-28` 受け入れ後に入る)。
+   * 無い応答 (undefined) は `#c644-28` マージ前を意味し、今までどおり扱う。
+   */
+  pending?: number;
   skipped: Array<{ index: number; code: string; reason: string }>;
 }
 
@@ -100,6 +105,8 @@ export interface ImportSummary {
   created: number;
   updated: number;
   unchanged: number;
+  /** 社員がまだ同期されておらず未結び付きのまま作成した行数 (`#c644-28` 受け入れ前は常に 0)。 */
+  pending: number;
   /** 下流が取り込めなかった行。 */
   skipped: ImportSkipped[];
   /** `skipped` を reason ごとに数えたもの。 */
@@ -141,6 +148,7 @@ function emptySummary(dryRun: boolean): ImportSummary {
     created: 0,
     updated: 0,
     unchanged: 0,
+    pending: 0,
     skipped: [],
     skipped_by_reason: {},
   };
@@ -204,6 +212,7 @@ export async function importCardLedger(opts: {
     summary.created += parsed.created ?? 0;
     summary.updated += parsed.updated ?? 0;
     summary.unchanged += parsed.unchanged ?? 0;
+    summary.pending += parsed.pending ?? 0;
     for (const s of parsed.skipped ?? []) {
       summary.skipped.push({ batch, index: s.index, code: s.code, reason: s.reason });
       summary.skipped_by_reason[s.reason] = (summary.skipped_by_reason[s.reason] ?? 0) + 1;
