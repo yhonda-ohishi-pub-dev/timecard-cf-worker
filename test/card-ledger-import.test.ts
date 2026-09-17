@@ -261,6 +261,36 @@ describe('dry_run と集計', () => {
     expect(summary.dry_run).toBe(false);
   });
 
+  it('pending (未結び付きで作成) が集計に合算される (#c644-28 受け入れ後)', async () => {
+    const list = stubListCards([{ entries: entries(2) }]);
+    const put = stubPutBulk([
+      { status: 200, body: JSON.stringify({ created: 0, updated: 0, unchanged: 0, pending: 2, skipped: [] }) },
+    ]);
+
+    const summary = await importCardLedger({
+      listCards: list.listCards,
+      putBulk: put.putBulk,
+      dryRun: false,
+    });
+
+    expect(summary.pending).toBe(2);
+    // ★ 素通しのまま created に紛れないこと。
+    expect(summary.created).toBe(0);
+  });
+
+  it('応答に pending が無ければ 0 のまま (#c644-28 マージ前)', async () => {
+    const list = stubListCards([{ entries: entries(1) }]);
+    const put = stubPutBulk();
+
+    const summary = await importCardLedger({
+      listCards: list.listCards,
+      putBulk: put.putBulk,
+      dryRun: false,
+    });
+
+    expect(summary.pending).toBe(0);
+  });
+
   it('500 件を超えたら分割して送る (page 境界とは独立)', async () => {
     const total = MAX_BULK_ITEMS + 2;
     const list = stubListCards([

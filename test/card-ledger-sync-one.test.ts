@@ -104,6 +104,36 @@ describe('upsertOneCard', () => {
     expect(result).toEqual({ ok: false, reason: 'employee_not_found' });
   });
 
+  it('応答に pending: 1 があれば { ok: true, pending: true } を返す (#c644-28 受け入れ後)', async () => {
+    const { forwarder } = stubForwarder(() => ({
+      status: 200,
+      body: JSON.stringify({ created: 0, updated: 0, unchanged: 0, pending: 1, skipped: [] }),
+    }));
+
+    const result = await upsertOneCard(envWith(forwarder), { code: '1', cardId: 'CARD1' });
+    expect(result).toEqual({ ok: true, pending: true });
+  });
+
+  it('応答に pending が無ければ今までどおり { ok: true } を返す (#c644-28 マージ前)', async () => {
+    const { forwarder } = stubForwarder(() => ({
+      status: 200,
+      body: JSON.stringify({ created: 1, updated: 0, unchanged: 0, skipped: [] }),
+    }));
+
+    const result = await upsertOneCard(envWith(forwarder), { code: '1', cardId: 'CARD1' });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('pending: 1 でも card_id が結果オブジェクトに出ない', async () => {
+    const { forwarder } = stubForwarder(() => ({
+      status: 200,
+      body: JSON.stringify({ created: 0, updated: 0, unchanged: 0, pending: 1, skipped: [] }),
+    }));
+
+    const result = await upsertOneCard(envWith(forwarder), { code: '1', cardId: 'super-secret-card-id' });
+    expect(JSON.stringify(result)).not.toContain('super-secret-card-id');
+  });
+
   it('alc が非 2xx を返しても例外を投げず ok:false で返す', async () => {
     const { forwarder } = stubForwarder(() => ({ status: 500, body: 'boom' }));
     const result = await upsertOneCard(envWith(forwarder), { code: '1', cardId: 'CARD1' });

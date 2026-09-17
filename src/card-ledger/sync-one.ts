@@ -45,8 +45,14 @@ interface DeleteByCardResponse {
   code: string | null;
 }
 
-/** 画面向けに返す alc 転送結果。**`card_id` は入れない。** */
-export type AlcSyncResult = { ok: true } | { ok: false; reason: string };
+/**
+ * 画面向けに返す alc 転送結果。**`card_id` は入れない。**
+ *
+ * `pending` は「成功したが、alc 側にまだ社員が同期されておらず未結び付きのまま
+ * 作成された」ことを示す (`#c644-28` の受け入れ後、応答の `pending` を見て立てる)。
+ * `#c644-28` マージ前 (応答に `pending` が無い) は今までどおり `{ ok: true }`。
+ */
+export type AlcSyncResult = { ok: true; pending?: true } | { ok: false; reason: string };
 
 type AlcAccess =
   | { ok: true; forwarder: AlcTenantDataForwarder; tenantId: string }
@@ -121,6 +127,9 @@ export async function upsertOneCard(
     const { data } = parsed;
     const applied = (data.created ?? 0) + (data.updated ?? 0) + (data.unchanged ?? 0);
     if (applied >= 1) return { ok: true };
+    // `pending` は `#c644-28` 受け入れ後にだけ入る。無い応答 (undefined) は今までどおり
+    // ここを通らず、下の skipped 判定に落ちる。
+    if ((data.pending ?? 0) >= 1) return { ok: true, pending: true };
 
     const reason = data.skipped?.[0]?.reason;
     return { ok: false, reason: reason ?? 'unknown' };
